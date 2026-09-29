@@ -12,14 +12,19 @@ struct SourceIsolationTests {
         "DeviceHinge",
         "onHingeChange",
         "UserInterfaceSizeClass",
+        "SwiftData",
+        "ModelContext",
+        "VersionedSchema",
+        "SchemaMigrationPlan",
     ]
 
-    @Test func canvasAndCoreDoNotNameDuoApis() throws {
+    @Test func canvasAndCoreDoNotNameDuoOrPersistenceApis() throws {
         let root = try repositoryRoot()
         let directories = [
             "Sources/CanvasModel",
             "Sources/CanvasCommands",
             "Sources/AdaptiveLayout",
+            "Sources/PersistenceMapping",
             "App/Canvas",
         ]
         for directory in directories {

@@ -37,13 +37,14 @@ final class EditorModel {
     /// The system undo manager this session is recording into, once SwiftUI has provided one.
     private var adoptedUndoManager: UndoManager?
 
-    init() {
+    init(document: CanvasDocument, imageStore: CanvasImageStore? = nil) {
         let undoManager = UndoManager()
         // Used until the view can see the system undo manager. `groupsByEvent` matches
         // UndoManager's default, so a run-loop turn is still one step.
         undoManager.groupsByEvent = true
         session = EditingSession(
-            document: SampleCanvas.makeDocument(),
+            document: document,
+            imageStore: imageStore,
             undoRecording: SystemUndoRecording(undoManager: undoManager)
         )
     }
@@ -385,8 +386,8 @@ final class EditorModel {
         )
     }
 
-    /// Stores `data` for this session and inserts an image element. Bytes stay in the
-    /// session image store, which Milestone 4 replaces with external storage.
+    /// Stores `data` for this session and inserts an image element.
+    /// The id is the `ImageRef`. A project save writes those bytes with the element.
     func insertImage(data: Data, pixelWidth: Double, pixelHeight: Double) {
         let id = UUID()
         session.imageStore.store(data, for: id)
@@ -522,6 +523,18 @@ final class EditorModel {
         canvasGestureEndedNormally = true
         rotateEdit?.end()
         clearRotate()
+    }
+
+    /// Turns an open drag, slider, or colour edit into a command when it changed anything.
+    ///
+    /// Leaving the app calls this before the project save. The preview is not written.
+    /// Ending it records one command, and that commit is what gets saved.
+    func commitOpenEdits() {
+        endMove()
+        endResize()
+        endRotate()
+        endStyleEdit()
+        session.commandManager.flushContinuousEdits()
     }
 
     /// Drops a drag that the gesture system cancelled, or that a pose change interrupted.

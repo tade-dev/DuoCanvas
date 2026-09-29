@@ -107,7 +107,7 @@ The selection mark is an accent-coloured stroke. Increased contrast uses a thick
 
 ### Undo bridge
 
-`CommandManager` records into an `UndoRecording`. Tests keep `SessionUndoManager`. The app starts with `SystemUndoRecording` around a private `UndoManager` (`groupsByEvent` left on). `EnvironmentValues.undoManager` is `UndoManager?` with a getter only, so `.environment(\.undoManager, ...)` does not compile on the iOS 27.1 SDK. `EditorRoot` reads that value and, while the stack is still empty, retargets the session at it. Shake and the Edit menu call that same object. A later edit does not move history onto a different manager. A drag that is still open is cancelled before undo or redo, so the unfinished drag is not a step.
+`CommandManager` records into an `UndoRecording`. Tests keep `SessionUndoManager`. The app starts with `SystemUndoRecording` around a private `UndoManager` (`groupsByEvent` left on). `EnvironmentValues.undoManager` is `UndoManager?` with a getter only, so `.environment(\.undoManager, ...)` does not compile on the iOS 27.1 SDK. `ProjectEditorHost` reads that value and, while the stack is still empty, retargets the session at it. Shake and the Edit menu call that same object. A later edit does not move history onto a different manager. A drag that is still open is cancelled before undo or redo, so the unfinished drag is not a step.
 
 ### Left out of Milestone 2 on purpose
 
@@ -143,7 +143,7 @@ Size, weight, alignment, and colour are native controls. Weight uses a menu pick
 
 ### Images
 
-`PhotosPicker` sits in the Add menu. The picked bytes go into `CanvasImageStore` on the editing session, under a new `ImageRef` id. The document still stores the id only. Undo of the insert removes the element and leaves the bytes, so redo can draw the same id. Milestone 4 should replace this map with SwiftData external storage and keep the id. The canvas draws the bytes with a resizable image, clipped to the element frame. Until the bytes exist, the placeholder remains.
+`PhotosPicker` sits in the Add menu. The picked bytes go into `CanvasImageStore` on the editing session, under a new `ImageRef` id. The document still stores the id only. Undo of the insert removes the element and leaves the bytes, so redo can draw the same id. Milestone 4 copies those bytes into the element record on save and copies them back when the project opens. The session map stays, so drawing and undo do not read the store. The canvas draws the bytes with a resizable image, clipped to the element frame. Until the bytes exist, the placeholder remains.
 
 A new image is fitted so its longer side is 240 points. The page has no zoom yet, so a full-resolution photo would be an untappable sliver once the page is fitted.
 
@@ -166,3 +166,39 @@ Rectangle, rounded rectangle, circle, text, line, and image. Group stays out. Th
 ### Left out on purpose
 
 No SwiftData, no projects, no PNG export, no design-system wrappers, and no change to how the split and the sheet are chosen. The undo bridge still reads `EnvironmentValues.undoManager` and does not assign it.
+
+## Milestone 4
+
+### Where the records live
+
+SwiftData does not build on Linux, so the `@Model` types stay in the app, under `App/Persistence`. `SchemaV1` is a `VersionedSchema` with `ProjectRecord` and `ElementRecord`. `DuoCanvasMigrationPlan` lists that schema and has no stages yet.
+
+`PersistenceMapping` is a package target. It turns a `CanvasDocument` into flat fields and back, including `zIndex`, text, paint, and stroke JSON, and image bytes keyed by `ImageRef` id. `swift test` covers that round trip. The package still does not import SwiftData, SwiftUI, or Duo APIs.
+
+### The container
+
+The app builds one `ModelContainer` from `Schema(versionedSchema: SchemaV1.self)` and the migration plan. That initializer has no `isUndoEnabled` parameter, and the view modifier that does cannot take the plan. After the container is created, `mainContext.undoManager` is set to nil and left there. That is the same outcome as `isUndoEnabled: false`. Autosave stays on. CloudKit is `.none`. There is still one undo stack, the command stack. Nothing assigns `EnvironmentValues.undoManager`.
+
+### When a write happens
+
+`ProjectStore` keeps the last saved field list. `EditorView` watches `CanvasDocument.revision` and asks the store to save when it changes. A preview does not change `revision`, so a drag does not write. One `ModelContext.save()` runs per commit, including undo and redo. Unchanged elements are left alone. Image bytes are assigned only when they differ, and they use `@Attribute(.externalStorage)`.
+
+Leaving the editor, or moving to the background, ends an open drag, slider, or colour edit first. That records one command if the value changed, and the save follows that commit. The preview itself is not written.
+
+A failed save rolls the context back and shows an alert. The canvas keeps the edit. The next commit tries again.
+
+`modifiedAt` moves on a canvas commit and on rename. `lastOpenedAt` moves when a project is created or opened. The home list sorts by `lastOpenedAt`, then `createdAt`.
+
+### Home
+
+The window root is a `NavigationStack` of projects, not the sample document. Create, rename, and delete live in `ProjectLibrary`. Delete asks for confirmation. A new project is an empty canvas at the model default, 1200 by 800 points. The 800 by 600 sample remains only as an in-memory preview.
+
+Opening a project builds an `EditingSession` from the saved document and image bytes. The compact sheet and the regular split are unchanged.
+
+### Thumbnails
+
+`ProjectRecord.thumbnail` is optional external storage, so a later milestone can fill it. This milestone does not render one. `ImageRenderer` would have to draw the canvas on the way out of a command, and that is more machinery than the save path needs.
+
+### Left out on purpose
+
+No hinge hardening, no second window, no duplicate or group commands, no PNG export, and no design-system controls. The app target was not compiled here. There is no iOS 27.1 SDK in this environment.

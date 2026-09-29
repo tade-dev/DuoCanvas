@@ -4,28 +4,17 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
-struct EditorRoot: View {
-    @Environment(\.undoManager) private var systemUndoManager
-    @State private var editor = EditorModel()
-
-    var body: some View {
-        NavigationStack {
-            EditorView(editor: editor)
-        }
-        .task(id: systemUndoManager.map(ObjectIdentifier.init)) {
-            editor.adoptSystemUndoManager(systemUndoManager)
-        }
-    }
-}
-
 struct EditorView: View {
     @Bindable var editor: EditorModel
+    var navigationTitle: String
+    /// Called after a command, undo, or redo changes the document. Previews do not call it.
+    var onCommittedRevision: () -> Void = {}
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var photoItem: PhotosPickerItem?
 
     var body: some View {
         AdaptiveEditorLayout(editor: editor)
-            .navigationTitle("Untitled")
+            .navigationTitle(navigationTitle)
             .toolbarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .automatic) {
@@ -62,6 +51,9 @@ struct EditorView: View {
                     await importPhoto(item)
                     photoItem = nil
                 }
+            }
+            .onChange(of: editor.document.revision) { _, _ in
+                onCommittedRevision()
             }
     }
 
@@ -128,5 +120,14 @@ struct EditorView: View {
     private var redoTitle: String {
         guard editor.canRedo, !editor.redoActionName.isEmpty else { return "Redo" }
         return "Redo \(editor.redoActionName)"
+    }
+}
+
+#Preview("Sample editor") {
+    NavigationStack {
+        EditorView(
+            editor: EditorModel(document: SampleCanvas.makeDocument()),
+            navigationTitle: "Sample"
+        )
     }
 }
