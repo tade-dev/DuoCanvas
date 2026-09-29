@@ -31,6 +31,7 @@ struct CanvasView: View {
                         CanvasElementView(
                             element: element,
                             scale: scale,
+                            imageData: imageData(for: element),
                             isSelected: editor.primarySelection == element.id,
                             selectionLineWidth: selectionLineWidth(
                                 for: element,
@@ -41,9 +42,23 @@ struct CanvasView: View {
                         )
                         .position(center(of: element, scale: scale))
                     }
+                    if let selected = editor.selectedElement {
+                        SelectionOverlay(
+                            element: selected,
+                            scale: scale,
+                            placements: handlePlacements(
+                                for: selected,
+                                scale: scale,
+                                artboardOrigin: origin
+                            ),
+                            editor: editor
+                        )
+                        .position(center(of: selected, scale: scale))
+                    }
                 }
                 .contentShape(Rectangle())
-                .gesture(pageGesture(scale: scale))
+                .coordinateSpace(name: ArtboardCoordinate.name)
+                .gesture(pageGesture(scale: scale, artboardOrigin: origin))
                 .frame(width: fitted.width, height: fitted.height)
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
@@ -52,9 +67,7 @@ struct CanvasView: View {
         .accessibilityLabel("Canvas")
         .onChange(of: moveGestureActive) { _, active in
             if !active {
-                Task { @MainActor in
-                    editor.cancelAbandonedMove()
-                }
+                editor.noteCanvasGestureEnded()
             }
         }
     }
@@ -68,7 +81,7 @@ struct CanvasView: View {
             }
     }
 
-    private func pageGesture(scale: Double) -> some Gesture {
+    private func pageGesture(scale: Double, artboardOrigin: CGPoint) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .updating($moveGestureActive) { value, state, _ in
                 if distance(value.translation) >= 10 {
@@ -76,6 +89,10 @@ struct CanvasView: View {
                 }
             }
             .onChanged { value in
+                guard !editor.isAdjustingWithHandle else { return }
+                guard !hitsSelectionHandle(value.startLocation, scale: scale, artboardOrigin: artboardOrigin) else {
+                    return
+                }
                 guard distance(value.translation) >= 10 else { return }
                 let id = editor.activeMoveID ?? elementID(at: value.startLocation, scale: scale)
                 guard let id else { return }
@@ -87,12 +104,67 @@ struct CanvasView: View {
                 )
             }
             .onEnded { value in
+                guard !editor.isAdjustingWithHandle else { return }
+                let startedOnHandle = hitsSelectionHandle(
+                    value.startLocation,
+                    scale: scale,
+                    artboardOrigin: artboardOrigin
+                )
+                let endedOnHandle = hitsSelectionHandle(
+                    value.location,
+                    scale: scale,
+                    artboardOrigin: artboardOrigin
+                )
+                guard !startedOnHandle, !endedOnHandle else { return }
                 if distance(value.translation) < 10 {
                     editor.select(elementID(at: value.location, scale: scale))
                 } else {
                     editor.endMove()
                 }
             }
+    }
+
+    private func imageData(for element: CanvasElement) -> Data? {
+        guard let id = element.image?.id else { return nil }
+        return editor.imageStore.data(for: id)
+    }
+
+    private func handlePlacements(
+        for element: CanvasElement,
+        scale: Double,
+        artboardOrigin: CGPoint
+    ) -> [SelectionHandlePlacement] {
+        let box = CanvasRect(origin: element.position, size: element.size).standardized
+        let paneOrigin = CanvasPoint(
+            x: Double(artboardOrigin.x) + box.origin.x * scale,
+            y: Double(artboardOrigin.y) + box.origin.y * scale
+        )
+        return SelectionHandleLayout.placements(
+            localSize: CanvasSize(width: box.size.width * scale, height: box.size.height * scale),
+            rotationDegrees: element.rotation.degrees,
+            paneOrigin: paneOrigin,
+            reservedAreas: layoutContext.reservedAreas
+        )
+    }
+
+    private func hitsSelectionHandle(_ point: CGPoint, scale: Double, artboardOrigin: CGPoint) -> Bool {
+        guard let element = editor.selectedElement else { return false }
+        let box = CanvasRect(origin: element.position, size: element.size).standardized
+        let visualWidth = box.size.width * scale
+        let visualHeight = box.size.height * scale
+        let center = center(of: element, scale: scale)
+        let local = SelectionGeometry.localPoint(
+            artboardX: Double(point.x),
+            artboardY: Double(point.y),
+            centerX: Double(center.x),
+            centerY: Double(center.y),
+            rotationDegrees: element.rotation.degrees,
+            visualWidth: visualWidth,
+            visualHeight: visualHeight
+        )
+        let placements = handlePlacements(for: element, scale: scale, artboardOrigin: artboardOrigin)
+        let centers = Dictionary(uniqueKeysWithValues: placements.map { ($0.handle, $0.center) })
+        return SelectionHandleLayout.hitHandle(at: local, centers: centers) != nil
     }
 
     private func elementID(at point: CGPoint, scale: Double) -> CanvasElement.ID? {

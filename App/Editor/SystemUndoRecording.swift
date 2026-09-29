@@ -3,8 +3,9 @@ import Foundation
 
 /// Forwards the session's undo stack to a real `UndoManager`.
 ///
-/// One editor owns one `UndoManager`. The view installs that same object as the
-/// environment undo manager, so toolbar buttons and the system gestures share one history.
+/// The editor reads `EnvironmentValues.undoManager` and records into that instance.
+/// The value is get-only, so the view does not assign it. Toolbar buttons and the
+/// system gestures then share one history.
 @MainActor
 final class SystemUndoRecording: UndoRecording {
     let undoManager: UndoManager

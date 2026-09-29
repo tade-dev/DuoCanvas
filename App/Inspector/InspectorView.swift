@@ -1,3 +1,4 @@
+import CanvasModel
 import SwiftUI
 import UIKit
 
@@ -7,36 +8,47 @@ struct InspectorView: View {
     var body: some View {
         Form {
             if let element = editor.selectedElement {
-                Section {
-                    NumericCommitField(
-                        title: "X",
-                        accessibilityLabel: "X position",
-                        value: element.position.x
-                    ) { editor.setX($0, for: element.id) }
-                    NumericCommitField(
-                        title: "Y",
-                        accessibilityLabel: "Y position",
-                        value: element.position.y
-                    ) { editor.setY($0, for: element.id) }
-                    NumericCommitField(
-                        title: "W",
-                        accessibilityLabel: "Width",
-                        value: element.size.width
-                    ) { editor.setWidth($0, for: element.id) }
-                    NumericCommitField(
-                        title: "H",
-                        accessibilityLabel: "Height",
-                        value: element.size.height
-                    ) { editor.setHeight($0, for: element.id) }
-                    NumericCommitField(
-                        title: "Rotation",
-                        accessibilityLabel: "Rotation",
-                        value: element.rotation.degrees
-                    ) { editor.setRotation($0, for: element.id) }
-                } header: {
-                    Text(element.type.displayName)
-                } footer: {
-                    Text("Rotation is in degrees, clockwise.")
+                let fields = InspectorFieldSet.forType(element.type)
+                Group {
+                    Section {
+                        NumericCommitField(
+                            title: "X",
+                            accessibilityLabel: "X position",
+                            value: element.position.x
+                        ) { editor.setX($0, for: element.id) }
+                        NumericCommitField(
+                            title: "Y",
+                            accessibilityLabel: "Y position",
+                            value: element.position.y
+                        ) { editor.setY($0, for: element.id) }
+                        NumericCommitField(
+                            title: "W",
+                            accessibilityLabel: "Width",
+                            value: element.size.width
+                        ) { editor.setWidth($0, for: element.id) }
+                        NumericCommitField(
+                            title: "H",
+                            accessibilityLabel: "Height",
+                            value: element.size.height
+                        ) { editor.setHeight($0, for: element.id) }
+                        NumericCommitField(
+                            title: "Rotation",
+                            accessibilityLabel: "Rotation",
+                            value: element.rotation.degrees
+                        ) { editor.setRotation($0, for: element.id) }
+                    } header: {
+                        Text(element.type.displayName)
+                    } footer: {
+                        Text("Rotation is in degrees, clockwise.")
+                    }
+                    Section("Appearance") {
+                        AppearanceInspector(editor: editor, element: element, fields: fields)
+                    }
+                    if fields.typography {
+                        Section("Typography") {
+                            TypographyInspector(editor: editor, element: element)
+                        }
+                    }
                 }
                 .id(element.id)
             } else {
@@ -55,7 +67,7 @@ struct InspectorView: View {
                 } header: {
                     Text("Document")
                 } footer: {
-                    Text("Select an element to edit its transform.")
+                    Text("Select an element to edit it.")
                 }
             }
         }
