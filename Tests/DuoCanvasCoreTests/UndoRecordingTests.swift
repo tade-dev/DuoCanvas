@@ -63,4 +63,29 @@ struct UndoRecordingTests {
         #expect(spy.registrations == 0)
         #expect(spy.actionNames.isEmpty)
     }
+
+    @Test func anEmptyStackCanTakeANewRecorder() {
+        let session = EditingSession()
+        let spy = UndoRecordingSpy()
+        #expect(session.commandManager.replaceUndoRecordingIfEmpty(with: spy))
+
+        session.commandManager.insert(CanvasElement.rectangle())
+        #expect(spy.registrations == 1)
+        #expect(spy.actionNames == ["Insert"])
+    }
+
+    @Test func aRecordedStepBlocksReplacingTheRecorder() {
+        let session = EditingSession()
+        let element = CanvasElement.rectangle()
+        session.commandManager.insert(element)
+        let before = session.document.copy()
+        let spy = UndoRecordingSpy()
+
+        #expect(!session.commandManager.replaceUndoRecordingIfEmpty(with: spy))
+        session.commandManager.undo()
+        #expect(session.document != before)
+        #expect(session.document.element(element.id) == nil)
+        #expect(spy.registrations == 0)
+        #expect(spy.undoCalls == 0)
+    }
 }

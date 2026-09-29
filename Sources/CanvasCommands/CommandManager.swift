@@ -68,7 +68,7 @@ public final class CommandManager {
     public let idleInterval: TimeInterval
 
     private let clock: any CoalescingClock
-    private let undoRecording: any UndoRecording
+    private var undoRecording: any UndoRecording
     private var coalescedEdit: CoalescedEdit?
     private var pendingContinuous: PendingContinuousEdit?
 
@@ -82,6 +82,19 @@ public final class CommandManager {
         self.idleInterval = idleInterval
         self.clock = clock
         self.undoRecording = undoRecording ?? SessionUndoManager()
+    }
+
+    /// Points later registrations at `recording` when nothing has been recorded yet.
+    ///
+    /// Returns false if an edit is open or a step is already on the stack, so one session
+    /// does not split its history across two managers.
+    @discardableResult
+    public func replaceUndoRecordingIfEmpty(with recording: any UndoRecording) -> Bool {
+        guard coalescedEdit == nil, pendingContinuous == nil, !canUndo, !canRedo else {
+            return false
+        }
+        undoRecording = recording
+        return true
     }
 
     public var canUndo: Bool { undoRecording.canUndo }

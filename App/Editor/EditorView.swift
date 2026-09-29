@@ -3,13 +3,16 @@ import CanvasModel
 import SwiftUI
 
 struct EditorRoot: View {
+    @Environment(\.undoManager) private var systemUndoManager
     @State private var editor = EditorModel()
 
     var body: some View {
         NavigationStack {
             EditorView(editor: editor)
         }
-        .environment(\.undoManager, editor.undoManager)
+        .task(id: systemUndoManager.map(ObjectIdentifier.init)) {
+            editor.adoptSystemUndoManager(systemUndoManager)
+        }
     }
 }
 

@@ -107,7 +107,7 @@ The selection mark is an accent-coloured stroke. Increased contrast uses a thick
 
 ### Undo bridge
 
-`CommandManager` records into an `UndoRecording`. Tests keep `SessionUndoManager`. The app passes `SystemUndoRecording`, which forwards to one `UndoManager` with `groupsByEvent` left on. `EditorRoot` puts that object in the environment. Toolbar Undo and Redo call the session, which calls the same `UndoManager`. A drag that is still open is cancelled before undo or redo, so the unfinished drag is not a step.
+`CommandManager` records into an `UndoRecording`. Tests keep `SessionUndoManager`. The app starts with `SystemUndoRecording` around a private `UndoManager` (`groupsByEvent` left on). `EnvironmentValues.undoManager` is `UndoManager?` with a getter only, so `.environment(\.undoManager, ...)` does not compile on the iOS 27.1 SDK. `EditorRoot` reads that value and, while the stack is still empty, retargets the session at it. Shake and the Edit menu call that same object. A later edit does not move history onto a different manager. A drag that is still open is cancelled before undo or redo, so the unfinished drag is not a step.
 
 ### Left out of Milestone 2 on purpose
 

@@ -8,7 +8,6 @@ import Observation
 @Observable
 final class EditorModel {
     let session: EditingSession
-    let undoManager: UndoManager
 
     var primarySelection: CanvasElement.ID?
     /// Compact width presents the inspector as a sheet. Regular width ignores this flag.
@@ -18,17 +17,34 @@ final class EditorModel {
     private var moveOrigin: CanvasPoint?
     private var movingID: CanvasElement.ID?
     private var moveEndedNormally = false
+    /// The system undo manager this session is recording into, once SwiftUI has provided one.
+    private var adoptedUndoManager: UndoManager?
 
     init() {
         let undoManager = UndoManager()
-        // One registration is one command. `groupsByEvent` still batches anything that
-        // lands in the same run-loop turn, which matches the system undo manager.
+        // Used until the view can see the system undo manager. `groupsByEvent` matches
+        // UndoManager's default, so a run-loop turn is still one step.
         undoManager.groupsByEvent = true
-        self.undoManager = undoManager
         session = EditingSession(
             document: SampleCanvas.makeDocument(),
             undoRecording: SystemUndoRecording(undoManager: undoManager)
         )
+    }
+
+    /// Records later edits on `manager` when the stack is still empty.
+    ///
+    /// `EnvironmentValues.undoManager` is get-only, so the session uses the instance
+    /// SwiftUI already publishes. Shake and the Edit menu then see the same registrations
+    /// as the toolbar. A nil value leaves the session on its own manager.
+    func adoptSystemUndoManager(_ manager: UndoManager?) {
+        guard let manager else { return }
+        if adoptedUndoManager === manager { return }
+        guard !session.commandManager.canUndo, !session.commandManager.canRedo else { return }
+        cancelInFlightEdit()
+        guard session.commandManager.replaceUndoRecordingIfEmpty(
+            with: SystemUndoRecording(undoManager: manager)
+        ) else { return }
+        adoptedUndoManager = manager
     }
 
     var document: CanvasDocument { session.document }

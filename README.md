@@ -24,7 +24,7 @@ The package has three library targets:
 
 The app is an Xcode target. It links the local package. Duo-only calls (`ArrangementView`, reserved regions, the hinge) live under `App/Duo` and are mapped to the plain types before they reach the canvas. The canvas sources do not name those APIs.
 
-One open project is one `EditingSession`. That session owns the `CanvasDocument` and the only undo stack for it. The app forwards that stack to one `UndoManager` and installs the same object in the environment, so the toolbar and the system undo gestures share it.
+One open project is one `EditingSession`. That session owns the `CanvasDocument` and the only undo stack for it. SwiftUI's `undoManager` environment value is get-only, so the app reads that instance and records into it. The toolbar and the system undo gestures then share it. Until that value appears, the session keeps a manager of its own so the toolbar still works.
 
 ## App
 
@@ -55,7 +55,7 @@ Check these on the iPhone Duo simulator in Xcode 27.1. This environment could no
 2. Closed, or any compact width: the canvas is alone. Tap Inspector. The sheet appears. Change X or Y and leave the field. The element moves. Dismiss the sheet. The selection stays.
 3. Open, wider than tall: the canvas and the inspector sit side by side. Select an element. Change W or H. The element resizes.
 4. Open, taller than wide (tabletop or portrait): the canvas is above the inspector.
-5. Undo and redo after an inspector edit, and after a drag.
+5. Undo and redo after an inspector edit, and after a drag. Shake and Edit > Undo should move the same step as the toolbar buttons. If the first edit happens before SwiftUI publishes an undo manager, only the toolbar has that step.
 6. Fold partway, if Device Hub can. The split should follow the fold. Nothing should crash. Confirm whether the inspector keeps the 320 point preference or the system forces a half-and-half split.
 7. On the way from regular to compact, the sheet should not appear by itself. The Inspector button brings it back.
 
