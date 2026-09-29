@@ -17,6 +17,7 @@ public struct ContinuousEditKey: Equatable, Hashable, Sendable {
         case strokeWidth
         case opacity
         case cornerRadius
+        case textColor
 
         public var defaultActionName: String {
             switch self {
@@ -25,6 +26,7 @@ public struct ContinuousEditKey: Equatable, Hashable, Sendable {
             case .strokeWidth: "Stroke Width"
             case .opacity: "Opacity"
             case .cornerRadius: "Corner Radius"
+            case .textColor: "Text Color"
             }
         }
     }
@@ -156,6 +158,14 @@ public final class CommandManager {
         let original = style
         mutate(&style)
         performNew(UpdateStyleCommand(elementID: elementID, from: original, to: style))
+    }
+
+    public func updateText(of elementID: CanvasElement.ID, _ mutate: (inout TextAttributes) -> Void) {
+        prepareForCommand()
+        guard let current = document.element(elementID)?.text else { return }
+        var text = current
+        mutate(&text)
+        performNew(UpdateTextCommand(elementID: elementID, from: current, to: text))
     }
 
     /// Opens a drag or slider edit. Preview updates are live and are not undo entries.

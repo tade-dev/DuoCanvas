@@ -1,6 +1,8 @@
 import AdaptiveLayout
 import CanvasModel
+import PhotosUI
 import SwiftUI
+import UIKit
 
 struct EditorRoot: View {
     @Environment(\.undoManager) private var systemUndoManager
@@ -19,6 +21,7 @@ struct EditorRoot: View {
 struct EditorView: View {
     @Bindable var editor: EditorModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var photoItem: PhotosPickerItem?
 
     var body: some View {
         AdaptiveEditorLayout(editor: editor)
@@ -26,6 +29,7 @@ struct EditorView: View {
             .toolbarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .automatic) {
+                    addMenu
                     Button {
                         editor.undo()
                     } label: {
@@ -52,6 +56,62 @@ struct EditorView: View {
                     }
                 }
             }
+            .onChange(of: photoItem) { _, item in
+                guard let item else { return }
+                Task {
+                    await importPhoto(item)
+                    photoItem = nil
+                }
+            }
+    }
+
+    private var addMenu: some View {
+        Menu {
+            Button {
+                editor.addRectangle()
+            } label: {
+                Label("Rectangle", systemImage: "rectangle")
+            }
+            Button {
+                editor.addRoundedRectangle()
+            } label: {
+                Label("Rounded Rectangle", systemImage: "rectangle.roundedtop")
+            }
+            Button {
+                editor.addCircle()
+            } label: {
+                Label("Circle", systemImage: "circle")
+            }
+            Button {
+                editor.addText()
+            } label: {
+                Label("Text", systemImage: "textformat")
+            }
+            Button {
+                editor.addLine()
+            } label: {
+                Label("Line", systemImage: "line.diagonal")
+            }
+            PhotosPicker(selection: $photoItem, matching: .images) {
+                Label("Image", systemImage: "photo")
+            }
+        } label: {
+            Label("Add", systemImage: "plus")
+        }
+    }
+
+    private func importPhoto(_ item: PhotosPickerItem) async {
+        do {
+            guard let imported = try await item.loadTransferable(type: ImportedCanvasImage.self) else { return }
+            let pixelSize = UIImage(data: imported.data)?.size
+            editor.insertImage(
+                data: imported.data,
+                pixelWidth: Double(pixelSize?.width ?? 0),
+                pixelHeight: Double(pixelSize?.height ?? 0)
+            )
+        } catch {
+            return
+        }
     }
 
     private var showsInspectorToggle: Bool {

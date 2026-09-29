@@ -112,3 +112,57 @@ The selection mark is an accent-coloured stroke. Increased contrast uses a thick
 ### Left out of Milestone 2 on purpose
 
 No appearance or typography inspector, no font picker, no colour picker, no image insert, no custom handles, no SwiftData, no export, no grouping commands, no extra windows, and no design-system controls.
+
+## Milestone 3
+
+### Inspector
+
+`InspectorFieldSet` decides which controls a type shows. The view does not invent a second set of rules.
+
+- Rectangle, rounded rectangle, and circle: fill, stroke, opacity. Corner radius only on the rounded rectangle. The plain rectangle renderer ignores `cornerRadius`, so the control stays on the type that draws it.
+- Line: stroke and opacity. No fill. A line always has a stroke, so the inspector does not offer to remove it.
+- Text: opacity, plus the typography section. Fill and stroke stay hidden. Text colour is the typography colour.
+- Image and group: opacity only.
+- Nothing selected: the document section from Milestone 2. Canvas size and background are still not editable.
+
+The transform block keeps the element name as its header. Appearance and Typography are the sections under it.
+
+Fill and stroke colour pickers use `supportsOpacity: false`. Element opacity is the separate slider, so the picker does not add a second opacity control. A picker change keeps the colour's existing alpha. Values within 1/512 in each channel count as the same colour, so a picker that echoes its current value does not record a step.
+
+Sliders (opacity, stroke width, corner radius) use one coalesced edit per drag, the same path as a move. Numeric fields and steppers commit one command when editing ends. Colour pickers have no end callback, so they use `recordContinuousEdit` and the 0.5 second idle window. The editor flushes that window about 0.6 seconds after the last change, which is what makes the undo button show the step without waiting for the next command.
+
+Shapes with no stroke show Add Stroke. Remove Stroke deletes it. A new shape from the Add menu already has a fill.
+
+### Typography
+
+There is still no SwiftUI font picker. `FontFamilyPicker` wraps `UIFontPickerViewController` and leaves `includeFaces` off, so the control chooses a family. The weight picker is what changes the face, and the canvas draws `Font.custom(family).weight(...)`. The stored `fontName` is `UIFont.familyName`.
+
+Size, weight, alignment, and colour are native controls. Weight uses a menu picker so it does not push a list through the arrangement. Alignment is segmented. The text string is a field too: the model already stores it, and an inserted label would otherwise stay stuck on "Text". That field commits when editing ends, like the numeric fields.
+
+`UpdateTextCommand` is the reversible edit. One changed field names the step ("Font", "Size", "Weight", "Alignment", "Text Color"). Several fields at once are "Text".
+
+### Images
+
+`PhotosPicker` sits in the Add menu. The picked bytes go into `CanvasImageStore` on the editing session, under a new `ImageRef` id. The document still stores the id only. Undo of the insert removes the element and leaves the bytes, so redo can draw the same id. Milestone 4 should replace this map with SwiftData external storage and keep the id. The canvas draws the bytes with a resizable image, clipped to the element frame. Until the bytes exist, the placeholder remains.
+
+A new image is fitted so its longer side is 240 points. The page has no zoom yet, so a full-resolution photo would be an untappable sliver once the page is fitted.
+
+### Selection handles
+
+The overlay is custom. No system control draws resize handles on a canvas object. Handles are hidden from VoiceOver; the transform fields do the same job.
+
+Eight square handles resize. A circle above the top edge rotates, so the two jobs are different shapes and not colour alone. The drawn mark is about 8 points. The hit box is 44 points. Increased contrast thickens the stroke and uses the primary colour.
+
+A drag on a handle is one Resize or Rotate step. Resize keeps the opposite edge fixed in canvas space, including when the element is rotated. Shapes stop at 8 points on a side. A line stops at 1 point, because its size is the end offset and a larger minimum would fight a short stroke.
+
+If a handle's hit box meets an active reserved area, the handle slides along its edge to the nearest clear sample, in 2 point steps. A corner may use either edge. If the whole edge is blocked, the handle stays put. The numeric fields are still there. Inactive areas do not move anything. The element itself does not move.
+
+The hit shape is only the handle boxes, so a drag that starts on the element body still moves it.
+
+### Add menu
+
+Rectangle, rounded rectangle, circle, text, line, and image. Group stays out. There is no grouping command yet, and the prompt leaves that for later.
+
+### Left out on purpose
+
+No SwiftData, no projects, no PNG export, no design-system wrappers, and no change to how the split and the sheet are chosen. The undo bridge still reads `EnvironmentValues.undoManager` and does not assign it.

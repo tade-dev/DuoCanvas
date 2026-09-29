@@ -1,10 +1,12 @@
 import CanvasModel
 import CoreGraphics
 import SwiftUI
+import UIKit
 
 struct CanvasElementView: View {
     var element: CanvasElement
     var scale: Double
+    var imageData: Data?
     var isSelected: Bool
     var selectionLineWidth: CGFloat
     var onSelect: () -> Void
@@ -56,10 +58,10 @@ struct CanvasElementView: View {
             .fill(fillColor)
             .overlay {
                 if let stroke = element.stroke {
-                    shape.strokeBorder(
-                        stroke.color.swiftUIColor,
+                    shape.stroke(style: .init(
                         lineWidth: max(stroke.width * scale, 0)
-                    )
+                    ))
+                    .foregroundStyle(stroke.color.swiftUIColor)
                 }
             }
     }
@@ -104,13 +106,22 @@ struct CanvasElementView: View {
     }
 
     private var imageBody: some View {
-        RoundedRectangle(cornerRadius: 4 * scale, style: .continuous)
-            .fill(element.fill?.color.swiftUIColor ?? Color.secondary.opacity(0.2))
-            .overlay {
+        ZStack {
+            if let imageData, let uiImage = UIImage(data: imageData) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Rectangle()
+                    .fill(element.fill?.color.swiftUIColor ?? Color.secondary.opacity(0.2))
                 Text("Image")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
             }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
     }
 
     private var groupBody: some View {
