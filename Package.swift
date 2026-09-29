@@ -2,7 +2,7 @@
 
 import PackageDescription
 
-// In-memory canvas, command stack, and layout decision for DuoCanvas.
+// In-memory canvas, command stack, layout decision, and the plain project mapping.
 // The iOS app is the Xcode target next to this package. It is iOS 27.1.
 // This package does not import SwiftUI, Duo APIs, or SwiftData, so `swift test` runs on Linux.
 let package = Package(
@@ -13,7 +13,7 @@ let package = Package(
     products: [
         .library(
             name: "DuoCanvasCore",
-            targets: ["CanvasModel", "CanvasCommands", "AdaptiveLayout"]
+            targets: ["CanvasModel", "CanvasCommands", "AdaptiveLayout", "PersistenceMapping"]
         ),
     ],
     targets: [
@@ -26,9 +26,13 @@ let package = Package(
             name: "AdaptiveLayout",
             dependencies: ["CanvasModel"]
         ),
+        .target(
+            name: "PersistenceMapping",
+            dependencies: ["CanvasModel"]
+        ),
         .testTarget(
             name: "DuoCanvasCoreTests",
-            dependencies: ["CanvasModel", "CanvasCommands", "AdaptiveLayout"]
+            dependencies: ["CanvasModel", "CanvasCommands", "AdaptiveLayout", "PersistenceMapping"]
         ),
     ]
 )

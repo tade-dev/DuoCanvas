@@ -35,7 +35,11 @@ struct FontFamilyPicker: UIViewControllerRepresentable {
         }
 
         func fontPickerViewControllerDidPickFont(_ viewController: UIFontPickerViewController) {
-            let font = UIFont(descriptor: viewController.selectedFontDescriptor, size: 12)
+            guard let descriptor = viewController.selectedFontDescriptor else {
+                onCancel()
+                return
+            }
+            let font = UIFont(descriptor: descriptor, size: 12)
             let family = font.familyName.isEmpty ? font.fontName : font.familyName
             onPick(family)
         }
