@@ -58,10 +58,10 @@ struct CanvasElementView: View {
             .fill(fillColor)
             .overlay {
                 if let stroke = element.stroke {
-                    shape.strokeBorder(
-                        stroke.color.swiftUIColor,
+                    shape.stroke(style: .init(
                         lineWidth: max(stroke.width * scale, 0)
-                    )
+                    ))
+                    .foregroundStyle(stroke.color.swiftUIColor)
                 }
             }
     }

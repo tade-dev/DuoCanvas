@@ -3,7 +3,7 @@ import Foundation
 
 /// A few shapes so the editor can be tried without an insert tool.
 enum SampleCanvas {
-    static func makeDocument() -> CanvasDocument {
+    @MainActor static func makeDocument() -> CanvasDocument {
         CanvasDocument(
             id: UUID(uuidString: "20000000-0000-0000-0000-000000000001")!,
             canvasConfig: CanvasConfig(
