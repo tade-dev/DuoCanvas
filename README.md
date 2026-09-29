@@ -2,46 +2,71 @@
 
 DuoCanvas is a native SwiftUI design canvas for iPhone Duo. You design on one screen and inspect on the other. It targets iOS 27.1 and later, and it also works on iPad.
 
-This repository is the start of that app. It currently contains the editing core only: an in-memory canvas document and a command stack with undo and redo. There is no application target, no SwiftUI views, and no SwiftData yet.
-
-The core is early. It is enough to insert, delete, move, resize, and restyle elements, and to undo those edits as single named steps.
+The repository has two parts. `DuoCanvasCore` is the in-memory document, the command stack, and the plain layout decision. `DuoCanvas.xcodeproj` is the app: a fitted canvas, a transform inspector, and the open or closed layout switch.
 
 ## Status
 
-Milestone 1, command core. Later milestones add the canvas UI, the inspector, project persistence, and the Duo layout. Those are not in this package.
+Milestone 2, rough Duo split. You can select an element, open the inspector, change X, Y, W, H, or rotation, and undo that edit. The canvas and the inspector share one editing session, so the page updates from the command path.
+
+Not in this milestone: appearance and typography controls, the font picker, selection handles, image insert, SwiftData, export, grouping, and multi-window.
 
 ## Layout
 
-The package has two library targets:
+The package has three library targets:
 
 | Target | Responsibility |
 | --- | --- |
-| `CanvasModel` | Value types for elements, geometry, colour, and the in-memory document |
+| `CanvasModel` | Value types for elements, geometry, colour, the in-memory document, and `CanvasLayoutContext` |
 | `CanvasCommands` | Commands, the editing session, and its undo stack |
+| `AdaptiveLayout` | Regular width uses a split. Compact width uses a sheet. No SwiftUI and no Duo types |
 
-`CanvasCommands` depends on `CanvasModel`. Nothing in either target depends on SwiftUI, on iPhone Duo APIs, or on SwiftData.
+`CanvasCommands` and `AdaptiveLayout` depend on `CanvasModel`. Nothing in the package depends on SwiftUI, on iPhone Duo APIs, or on SwiftData.
 
-One open project is one `EditingSession`. That session owns the `CanvasDocument` and the only undo stack for it. Two sessions do not share history.
+The app is an Xcode target. It links the local package. Duo-only calls (`ArrangementView`, reserved regions, the hinge) live under `App/Duo` and are mapped to the plain types before they reach the canvas. The canvas sources do not name those APIs.
+
+One open project is one `EditingSession`. That session owns the `CanvasDocument` and the only undo stack for it. The app forwards that stack to one `UndoManager` and installs the same object in the environment, so the toolbar and the system undo gestures share it.
+
+## App
+
+Open `DuoCanvas.xcodeproj` in Xcode 27.1. The run destination is the iPhone Duo simulator. The project does not set a development team or a signing identity.
+
+The window is one `NavigationStack`. The arrangement sits inside it, not the other way around. Regular width uses `ArrangementView` with `.arrangementViewStyle(.split)`: canvas primary, inspector secondary. The system puts them side by side when the container is wider than it is tall, and stacks the canvas above the inspector when it is taller. Compact width shows the canvas and presents the inspector as a sheet from the Inspector toolbar item. The sheet uses medium and large detents, and the canvas stays interactive up through the medium detent.
+
+The sample page is 800 by 600 points, with a rectangle, a rounded rectangle, a circle, a line, and a text label. The page is fitted to the pane. There is no pan or zoom yet. Dragging an element moves it as one undo step. A short press selects it. The selection mark is a system stroke, not a set of handles.
+
+With nothing selected, the inspector shows the page size and background. Those values are not editable yet.
 
 ## Build and test
 
-You need Swift 6. The package manifest uses tools version 6.0. These tests were run with Swift 6.4 on Linux.
+The package tests need Swift 6. They were run with Swift 6.4 on Linux. The app is not part of that build. This environment has no iOS 27.1 SDK, so the Duo target was not compiled here.
 
 ```sh
 swift build
 swift test
 ```
 
-No Xcode project is required for the core. The iOS deployment target in `Package.swift` is 27.1, which is what the future app will use. The sources themselves stay free of Apple-only frameworks so the tests run on Linux.
+No Xcode project is required for the core. The iOS deployment target is 27.1.
+
+## Device Hub
+
+Check these on the iPhone Duo simulator in Xcode 27.1. This environment could not run them.
+
+1. Open `DuoCanvas.xcodeproj` and run it on the Duo simulator.
+2. Closed, or any compact width: the canvas is alone. Tap Inspector. The sheet appears. Change X or Y and leave the field. The element moves. Dismiss the sheet. The selection stays.
+3. Open, wider than tall: the canvas and the inspector sit side by side. Select an element. Change W or H. The element resizes.
+4. Open, taller than wide (tabletop or portrait): the canvas is above the inspector.
+5. Undo and redo after an inspector edit, and after a drag.
+6. Fold partway, if Device Hub can. The split should follow the fold. Nothing should crash. Confirm whether the inspector keeps the 320 point preference or the system forces a half-and-half split.
+7. On the way from regular to compact, the sheet should not appear by itself. The Inspector button brings it back.
 
 ## Layer rules
 
 - The canvas model does not know that it will be shown on iPhone Duo, iPhone, or iPad.
 - Commands talk to the document. They do not talk to views.
 - Undo is a command stack owned by the editing session. It is not SwiftData's undo, and this package does not import SwiftData.
-- Views, when they exist, should call `CommandManager` rather than mutating the document on their own. A direct mutation is not an undo step.
+- Views call `CommandManager` rather than mutating the document on their own. A direct mutation is not an undo step.
 - Colours in the core are plain RGBA values. They are not SwiftUI colours.
-- Do not hard-code Duo screen sizes. The default artboard (1200 by 800 points) is only a placeholder canvas size.
+- Do not hard-code Duo screen sizes. The default artboard (1200 by 800 points) is only a placeholder canvas size. The sample document uses 800 by 600 so the seeded shapes stay tappable when the page is fitted.
 
 ## Licence
 

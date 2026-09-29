@@ -10,14 +10,16 @@ public final class EditingSession {
     public init(
         document: CanvasDocument? = nil,
         idleInterval: TimeInterval = CommandManager.defaultIdleInterval,
-        clock: (any CoalescingClock)? = nil
+        clock: (any CoalescingClock)? = nil,
+        undoRecording: (any UndoRecording)? = nil
     ) {
         let document = document ?? CanvasDocument()
         self.document = document
         self.commandManager = CommandManager(
             document: document,
             idleInterval: idleInterval,
-            clock: clock ?? SystemCoalescingClock()
+            clock: clock ?? SystemCoalescingClock(),
+            undoRecording: undoRecording
         )
     }
 }

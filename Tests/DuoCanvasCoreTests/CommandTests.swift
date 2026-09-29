@@ -265,6 +265,35 @@ struct CommandTests {
         #expect(commands.redoActionName == "Resize")
     }
 
+    @Test func rotateUndoRedoRestoresRotation() {
+        let session = EditingSession()
+        let element = CanvasElement.rectangle(rotation: CanvasRotation(degrees: 5))
+        let commands = session.commandManager
+        commands.insert(element)
+        let before = session.document.copy()
+
+        commands.rotate(element.id, to: CanvasRotation(degrees: 45))
+        #expect(commands.undoActionName == "Rotate")
+        let rotated = session.document.copy()
+
+        commands.undo()
+        #expect(session.document == before)
+        commands.redo()
+        #expect(session.document == rotated)
+        #expect(session.document.element(element.id)?.rotation == CanvasRotation(degrees: 45))
+    }
+
+    @Test func unchangedRotationIsNotAnUndoStep() {
+        let session = EditingSession()
+        let element = CanvasElement.rectangle(rotation: CanvasRotation(degrees: 12))
+        let commands = session.commandManager
+        commands.insert(element)
+        let revision = session.document.revision
+        commands.rotate(element.id, to: CanvasRotation(degrees: 12))
+        #expect(commands.undoActionName == "Insert")
+        #expect(session.document.revision == revision)
+    }
+
     @Test func unchangedMoveIsNotAnUndoStep() {
         let session = EditingSession()
         let element = CanvasElement.rectangle(position: CanvasPoint(x: 3, y: 3))

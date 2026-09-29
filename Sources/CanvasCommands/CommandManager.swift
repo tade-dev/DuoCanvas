@@ -68,35 +68,37 @@ public final class CommandManager {
     public let idleInterval: TimeInterval
 
     private let clock: any CoalescingClock
-    private let undoManager = SessionUndoManager()
+    private let undoRecording: any UndoRecording
     private var coalescedEdit: CoalescedEdit?
     private var pendingContinuous: PendingContinuousEdit?
 
     public init(
         document: CanvasDocument,
         idleInterval: TimeInterval = CommandManager.defaultIdleInterval,
-        clock: any CoalescingClock = SystemCoalescingClock()
+        clock: any CoalescingClock = SystemCoalescingClock(),
+        undoRecording: (any UndoRecording)? = nil
     ) {
         self.document = document
         self.idleInterval = idleInterval
         self.clock = clock
+        self.undoRecording = undoRecording ?? SessionUndoManager()
     }
 
-    public var canUndo: Bool { undoManager.canUndo }
-    public var canRedo: Bool { undoManager.canRedo }
-    public var undoActionName: String { undoManager.undoActionName }
-    public var redoActionName: String { undoManager.redoActionName }
+    public var canUndo: Bool { undoRecording.canUndo }
+    public var canRedo: Bool { undoRecording.canRedo }
+    public var undoActionName: String { undoRecording.undoActionName }
+    public var redoActionName: String { undoRecording.redoActionName }
 
     public func undo() {
         precondition(coalescedEdit == nil, "End or cancel the open edit before undo.")
         commitPendingContinuousEdit()
-        undoManager.undo()
+        undoRecording.undo()
     }
 
     public func redo() {
         precondition(coalescedEdit == nil, "End or cancel the open edit before redo.")
         commitPendingContinuousEdit()
-        undoManager.redo()
+        undoRecording.redo()
     }
 
     public func perform(_ command: any CanvasCommand) {
@@ -126,6 +128,12 @@ public final class CommandManager {
         prepareForCommand()
         guard let current = document.element(elementID) else { return }
         performNew(ResizeElementCommand(elementID: elementID, from: current.size, to: size))
+    }
+
+    public func rotate(_ elementID: CanvasElement.ID, to rotation: CanvasRotation) {
+        prepareForCommand()
+        guard let current = document.element(elementID) else { return }
+        performNew(RotateElementCommand(elementID: elementID, from: current.rotation, to: rotation))
     }
 
     public func updateStyle(of elementID: CanvasElement.ID, _ mutate: (inout ElementStyle) -> Void) {
@@ -234,10 +242,10 @@ public final class CommandManager {
         guard document.snapshot() != before else { return }
         let inverse = command.inverse()
         let actionName = command.actionName
-        undoManager.registerUndo(withTarget: self) { manager in
+        undoRecording.registerUndo(withTarget: self) { manager in
             manager.applyRegistered(inverse, actionName: actionName)
         }
-        undoManager.setActionName(actionName)
+        undoRecording.setActionName(actionName)
     }
 
     private func applyRegistered(_ command: any CanvasCommand, actionName: String) {
@@ -248,10 +256,10 @@ public final class CommandManager {
             document.snapshot() != before,
             "A registered command did not change the document."
         )
-        undoManager.registerUndo(withTarget: self) { manager in
+        undoRecording.registerUndo(withTarget: self) { manager in
             manager.applyRegistered(redo, actionName: actionName)
         }
-        undoManager.setActionName(actionName)
+        undoRecording.setActionName(actionName)
     }
 
     private func flushIfIdle(at now: TimeInterval) {
