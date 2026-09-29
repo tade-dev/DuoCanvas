@@ -5,7 +5,7 @@ import UIKit
 /// The page, fitted to the pane. This view takes a plain layout context and does not
 /// read device pose itself.
 struct CanvasView: View {
-    var editor: EditorModel
+    @Bindable var editor: EditorModel
     var layoutContext: CanvasLayoutContext
 
     @Environment(\.colorSchemeContrast) private var contrast
@@ -31,44 +31,33 @@ struct CanvasView: View {
                         editor.select(nil)
                     }
                 ZStack(alignment: .topLeading) {
-                    artboardBackground
-                        .frame(width: fitted.width, height: fitted.height)
-                    ForEach(editor.document.orderedElements) { element in
-                        let role = selectionRole(of: element.id)
-                        CanvasElementView(
-                            element: element,
+                    artboardContent(scale: scale, origin: origin)
+                        .contentShape(Rectangle())
+                        .gesture(pageGesture(scale: scale, artboardOrigin: origin))
+                    // In front of the page gesture, so a drag cannot take the caret.
+                    if let editing = inlineEditingElement {
+                        CanvasInlineTextField(
+                            element: editing,
                             scale: scale,
-                            imageData: imageData(for: element),
-                            role: role,
-                            selectionLineWidth: selectionLineWidth(
-                                for: element,
+                            lineWidth: selectionLineWidth(
+                                for: editing,
                                 scale: scale,
                                 artboardOrigin: origin
                             ),
-                            onSelect: { editor.select(element.id) },
-                            onDuplicate: { editor.duplicateElement(element.id) },
-                            onToggleSelection: { editor.toggleSelection(element.id) },
-                            onGroup: role == .primary && editor.canGroup ? { editor.groupSelection() } : nil,
-                            onUngroup: role == .primary && editor.canUngroup ? { editor.ungroupSelection() } : nil
+                            draft: $editor.inlineTextDraft,
+                            onFinish: { commit in
+                                if commit {
+                                    editor.commitInlineTextEdit()
+                                } else {
+                                    editor.cancelInlineTextEdit()
+                                }
+                                canvasFocused = true
+                            }
                         )
-                        .position(center(of: element, scale: scale))
-                    }
-                    if let selected = editor.selectedElement {
-                        SelectionOverlay(
-                            element: selected,
-                            scale: scale,
-                            placements: handlePlacements(
-                                for: selected,
-                                scale: scale,
-                                artboardOrigin: origin
-                            )
-                        )
-                        .position(center(of: selected, scale: scale))
+                        .position(center(of: editing, scale: scale))
                     }
                 }
-                .contentShape(Rectangle())
                 .coordinateSpace(name: ArtboardCoordinate.name)
-                .gesture(pageGesture(scale: scale, artboardOrigin: origin))
                 .frame(width: fitted.width, height: fitted.height)
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
@@ -78,16 +67,27 @@ struct CanvasView: View {
         .focusable()
         .focused($canvasFocused)
         .focusedValue(\.canvasEditActions, CanvasEditActions(
-            canDuplicate: editor.canDuplicate,
+            canDuplicate: editor.canDuplicate && !editor.isEditingTextInline,
             duplicate: { editor.duplicateSelection() }
         ))
         .modifier(CanvasClipboardModifier(
             clipboard: editor.makeClipboard(),
-            onPaste: { editor.paste($0) }
+            onPaste: { received in
+                guard !editor.isEditingTextInline else { return }
+                editor.paste(received)
+            }
         ))
-        .onDeleteCommand { editor.deleteSelection() }
+        .onDeleteCommand(perform: editor.isEditingTextInline ? nil : { editor.deleteSelection() })
         .onKeyPress(phases: [.down, .up]) { press in
             shiftHeld = press.modifiers.contains(.shift)
+            if editor.isEditingTextInline {
+                if press.key == .escape, press.phase == .down {
+                    editor.cancelInlineTextEdit()
+                    canvasFocused = true
+                    return .handled
+                }
+                return .ignored
+            }
             guard press.phase == .down else { return .ignored }
             switch press.key {
             case .upArrow:
@@ -114,6 +114,55 @@ struct CanvasView: View {
         }
     }
 
+    private var inlineEditingElement: CanvasElement? {
+        guard let id = editor.inlineTextEditingID else { return nil }
+        return editor.document.element(id)
+    }
+
+    private func artboardContent(scale: Double, origin: CGPoint) -> some View {
+        ZStack(alignment: .topLeading) {
+            artboardBackground
+                .frame(
+                    width: editor.document.canvasConfig.size.width * scale,
+                    height: editor.document.canvasConfig.size.height * scale
+                )
+            ForEach(editor.document.orderedElements) { element in
+                let role = selectionRole(of: element.id)
+                CanvasElementView(
+                    element: element,
+                    scale: scale,
+                    imageData: imageData(for: element),
+                    role: role,
+                    selectionLineWidth: selectionLineWidth(
+                        for: element,
+                        scale: scale,
+                        artboardOrigin: origin
+                    ),
+                    onSelect: { editor.select(element.id) },
+                    onDuplicate: { editor.duplicateElement(element.id) },
+                    onToggleSelection: { editor.toggleSelection(element.id) },
+                    onGroup: role == .primary && editor.canGroup ? { editor.groupSelection() } : nil,
+                    onUngroup: role == .primary && editor.canUngroup ? { editor.ungroupSelection() } : nil,
+                    suppressesString: editor.inlineTextEditingID == element.id,
+                    onEditText: { editor.beginInlineTextEdit(element.id) }
+                )
+                .position(center(of: element, scale: scale))
+            }
+            if let selected = editor.selectedElement, editor.inlineTextEditingID == nil {
+                SelectionOverlay(
+                    element: selected,
+                    scale: scale,
+                    placements: handlePlacements(
+                        for: selected,
+                        scale: scale,
+                        artboardOrigin: origin
+                    )
+                )
+                .position(center(of: selected, scale: scale))
+            }
+        }
+    }
+
     private var artboardBackground: some View {
         Rectangle()
             .fill(editor.document.canvasConfig.background.swiftUIColor)
@@ -129,8 +178,24 @@ struct CanvasView: View {
                 state = true
             }
             .onChanged { value in
-                canvasFocused = true
                 var session = session(for: value, scale: scale, artboardOrigin: artboardOrigin)
+                if editor.isEditingTextInline {
+                    let onEditingBody = session.contact.onBody
+                        && session.contact.elementID == editor.inlineTextEditingID
+                    if onEditingBody {
+                        session.phase = .ignore
+                        pointer = session
+                        return
+                    }
+                    editor.commitInlineTextEdit()
+                    session.contact = contact(
+                        at: value.startLocation,
+                        scale: scale,
+                        artboardOrigin: artboardOrigin
+                    )
+                    pointer = session
+                }
+                canvasFocused = true
                 if session.phase == .pending {
                     session.phase = CanvasPointerRouting.intent(
                         elapsed: value.time.timeIntervalSince(session.startedAt),
@@ -155,17 +220,34 @@ struct CanvasView: View {
                     }
                     apply(session, value: value, scale: scale)
                 }
+                let hit = pointer?.contact ?? contact(
+                    at: value.startLocation,
+                    scale: scale,
+                    artboardOrigin: artboardOrigin
+                )
+                // A stationary second tap edits, including one that outlasted the move hold.
+                // A drag that actually moved still commits as a move.
+                if traveled < CanvasPointerRouting.dragSlop,
+                   CanvasTextEditRouting.shouldBeginInlineEdit(
+                       elementType: hit.elementID.flatMap { editor.document.element($0)?.type },
+                       hitID: hit.elementID,
+                       primarySelection: editor.primarySelection,
+                       additive: shiftHeld,
+                       onBody: hit.onBody
+                   ) {
+                    editor.cancelStationaryMove()
+                }
                 let edited = editor.activeMoveID != nil || editor.isAdjustingWithHandle
                 editor.endMove()
                 editor.endResize()
                 editor.endRotate()
                 if !edited, traveled < CanvasPointerRouting.dragSlop {
-                    let hit = pointer?.contact ?? contact(
-                        at: value.startLocation,
-                        scale: scale,
-                        artboardOrigin: artboardOrigin
-                    )
-                    select(for: hit, additive: shiftHeld)
+                    let onEditingBody = editor.isEditingTextInline
+                        && hit.onBody
+                        && hit.elementID == editor.inlineTextEditingID
+                    if !onEditingBody {
+                        select(for: hit, additive: shiftHeld)
+                    }
                 }
                 closePointer()
             }
@@ -227,14 +309,26 @@ struct CanvasView: View {
     }
 
     private func select(for contact: PointerContact, additive: Bool) {
-        canvasFocused = true
         if contact.onBody, let id = contact.elementID {
+            if CanvasTextEditRouting.shouldBeginInlineEdit(
+                elementType: editor.document.element(id)?.type,
+                hitID: id,
+                primarySelection: editor.primarySelection,
+                additive: additive,
+                onBody: contact.onBody
+            ) {
+                editor.beginInlineTextEdit(id)
+                canvasFocused = false
+                return
+            }
+            canvasFocused = true
             if additive {
                 editor.toggleSelection(id)
             } else {
                 editor.select(id)
             }
         } else if contact.handleOutsideBody == nil, !additive {
+            canvasFocused = true
             editor.select(nil)
         }
     }
@@ -250,6 +344,16 @@ struct CanvasView: View {
     /// Shift-tap skips that preference so a second element can join the selection.
     /// A hit on a grouped child selects the outermost group.
     private func contact(at point: CGPoint, scale: Double, artboardOrigin: CGPoint) -> PointerContact {
+        if editor.inlineTextEditingID != nil {
+            if let id = elementID(at: point, scale: scale) {
+                if id == editor.inlineTextEditingID {
+                    return PointerContact(onBody: true, elementID: id, handleOutsideBody: nil)
+                }
+                let root = CanvasStructure.selectionRoot(of: id, in: editor.document.elements)
+                return PointerContact(onBody: true, elementID: root, handleOutsideBody: nil)
+            }
+            return PointerContact(onBody: false, elementID: nil, handleOutsideBody: nil)
+        }
         if !shiftHeld, let selected = editor.selectedElement, bodyContains(selected, point: point, scale: scale) {
             return PointerContact(onBody: true, elementID: selected.id, handleOutsideBody: nil)
         }

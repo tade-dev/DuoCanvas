@@ -1,4 +1,5 @@
 import CanvasModel
+import Foundation
 import Testing
 
 @Suite("Canvas pointer routing")
@@ -92,5 +93,71 @@ struct CanvasPointerRoutingTests {
         )
         #expect(drag == .ignore)
         #expect(tap == .pending)
+    }
+}
+
+@Suite("Inline text editing")
+struct CanvasTextEditRoutingTests {
+    private let textID = UUID(uuidString: "10000000-0000-0000-0000-000000000001")!
+
+    @Test func aSecondTapOnThePrimaryTextBeginsEditing() {
+        #expect(
+            CanvasTextEditRouting.shouldBeginInlineEdit(
+                elementType: .text,
+                hitID: textID,
+                primarySelection: textID,
+                additive: false,
+                onBody: true
+            )
+        )
+    }
+
+    @Test func theFirstTapAndNonTextPressesDoNotEdit() {
+        #expect(
+            !CanvasTextEditRouting.shouldBeginInlineEdit(
+                elementType: .text,
+                hitID: textID,
+                primarySelection: nil,
+                additive: false,
+                onBody: true
+            )
+        )
+        #expect(
+            !CanvasTextEditRouting.shouldBeginInlineEdit(
+                elementType: .rectangle,
+                hitID: textID,
+                primarySelection: textID,
+                additive: false,
+                onBody: true
+            )
+        )
+        #expect(
+            !CanvasTextEditRouting.shouldBeginInlineEdit(
+                elementType: .text,
+                hitID: textID,
+                primarySelection: textID,
+                additive: true,
+                onBody: true
+            )
+        )
+        #expect(
+            !CanvasTextEditRouting.shouldBeginInlineEdit(
+                elementType: .text,
+                hitID: textID,
+                primarySelection: textID,
+                additive: false,
+                onBody: false
+            )
+        )
+        let other = UUID(uuidString: "10000000-0000-0000-0000-000000000002")!
+        #expect(
+            !CanvasTextEditRouting.shouldBeginInlineEdit(
+                elementType: .text,
+                hitID: other,
+                primarySelection: textID,
+                additive: false,
+                onBody: true
+            )
+        )
     }
 }

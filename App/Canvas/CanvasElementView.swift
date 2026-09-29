@@ -21,13 +21,16 @@ struct CanvasElementView: View {
     var onToggleSelection: (() -> Void)?
     var onGroup: (() -> Void)?
     var onUngroup: (() -> Void)?
+    /// Hides the rendered string while the canvas text field draws it.
+    var suppressesString: Bool = false
+    var onEditText: (() -> Void)? = nil
 
     var body: some View {
         content
             .opacity(element.opacity)
             .frame(width: frameSize.width, height: frameSize.height)
             .overlay {
-                if role != .none {
+                if role != .none, !suppressesString {
                     Rectangle()
                         .strokeBorder(
                             Color.accentColor,
@@ -53,6 +56,14 @@ struct CanvasElementView: View {
             ))
             .modifier(NamedAccessibilityAction(name: "Group", perform: onGroup))
             .modifier(NamedAccessibilityAction(name: "Ungroup", perform: onUngroup))
+            .modifier(NamedAccessibilityAction(name: "Edit Text", perform: editTextAction))
+            .accessibilityHidden(suppressesString)
+    }
+
+    /// VoiceOver edits text only on the primary element, and only when the field is closed.
+    private var editTextAction: (() -> Void)? {
+        guard element.type == .text, role == .primary, !suppressesString else { return nil }
+        return onEditText
     }
 
     private var frameSize: CGSize {
@@ -102,7 +113,16 @@ struct CanvasElementView: View {
         }
     }
 
+    @ViewBuilder
     private var textBody: some View {
+        if suppressesString {
+            Color.clear
+        } else {
+            renderedText
+        }
+    }
+
+    private var renderedText: some View {
         let text = element.text
         return Text(text?.string ?? "")
             .font(

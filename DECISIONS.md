@@ -233,6 +233,16 @@ A tap selects the outermost group when the hit element has a group parent. Voice
 
 Arrow keys nudge the selection by 1 canvas point. Each nudge is one Move. Delete and forward delete remove the selection as one Delete. ⌘C and ⌘V use `copyable` and `pasteDestination` with a `Codable` clipboard (`CanvasClipboard`) and an imported UTI, `dev.tade.duocanvas.elements`. The package does not import Transferable or SwiftUI. The canvas is focusable. Shortcuts are delivered there, not to the inspector fields.
 
+### Inline text
+
+A second tap on a text element that is already the primary selection opens a single-line text field in that element's frame. That is the touch form of Figma's second click. The first tap still only selects. Shift-tap still changes membership and does not edit. A shape, an image, a line, or a group does not edit. A tap on a grouped child still selects the outermost group, so inline editing is for a text element that is itself the primary selection.
+
+The field is a sibling in front of the page gesture, not inside it, so the drag cannot take the caret. A press on that element's body is ignored while the field is open. Resize and rotate handles are hidden. A press that is not on that body commits, then uses the same hold-to-move router as any other press. The 0.25 second hold is unchanged.
+
+The draft is not a command. Return, Done, blur, or a tap outside commits it through `UpdateTextCommand` with the action name Text: one undo step. An unchanged draft records nothing. Escape drops the draft and does not record it. Undo and Redo while the draft is open drop it, then move the existing stack, the same way a cancelled drag does. Leaving the editor commits an open draft first, so the save-on-commit path still writes it. An empty string stays on the element. The inspector's text field writes the same command.
+
+Only the primary text element edits. Other selected elements keep the dashed stroke and no handles.
+
 ### PNG
 
 The toolbar shares a PNG of the committed artboard through `ShareLink` and `ImageRenderer` at 2x. Selection chrome is not drawn. A drag preview is not in that image, because the renderer runs when `revision` changes. The package tests do not draw it.

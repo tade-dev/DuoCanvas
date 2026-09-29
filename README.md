@@ -6,7 +6,7 @@ The repository has two parts. `DuoCanvasCore` is the in-memory document, the com
 
 ## Status
 
-Milestone 6, editing. Duplicate, group, and ungroup are commands on the same undo stack. A selection can hold more than one element; the inspector edits the primary, and the others are marked with a dashed stroke and no handles. Copy and paste use a Transferable clipboard. Delete, the arrow keys, and ⌘D edit the selection. ⌘Z and ⇧⌘Z still go through the system undo manager. Export PNG shares the committed page. A drag preview still does not write.
+Milestone 6, editing. Duplicate, group, and ungroup are commands on the same undo stack. A selection can hold more than one element; the inspector edits the primary, and the others are marked with a dashed stroke and no handles. Copy and paste use a Transferable clipboard. Delete, the arrow keys, and ⌘D edit the selection. ⌘Z and ⇧⌘Z still go through the system undo manager. A second tap on a selected text element edits that string in place; the change is one Text undo step. Export PNG shares the committed page. A drag preview still does not write.
 
 Milestone 4, persistence, is unchanged. The app opens on a project list. You can create a project, rename it, open it, and delete it after a confirmation. The list is ordered by when the project was last opened. The editor saves when a command commits, including undo and redo. Image bytes are stored with the element and come back with the same id after a relaunch.
 
@@ -41,11 +41,11 @@ A new project is an empty 1200 by 800 point page. The page is fitted to the pane
 
 With nothing selected, the inspector shows the page size and background. Those values are not editable yet. The Add menu inserts the shapes the model already has. Image uses the system photo picker. The bytes stay in the session until the command commits, then they are stored with the element under the same `ImageRef` id.
 
-Arrange duplicates the selection, or groups and ungroups it. A tap on a grouped element selects the group. Shift-tap adds or removes an element. The inspector keeps editing the primary selection. Arrow keys nudge by one point. Delete removes the selection. ⌘D duplicates, and ⌘C / ⌘V copy and paste, when the canvas is focused. Export PNG shares the page without selection marks.
+Arrange duplicates the selection, or groups and ungroups it. A tap on a grouped element selects the group. Shift-tap adds or removes an element. The inspector keeps editing the primary selection. Tap a selected text element again to edit it in its frame. Return, Done, or a tap outside commits that string as one undo step. Escape cancels. Arrow keys nudge by one point. Delete removes the selection. ⌘D duplicates, and ⌘C / ⌘V copy and paste, when the canvas is focused. Export PNG shares the page without selection marks.
 
 ## Build and test
 
-The package tests need Swift 6. They were run with Swift 6.4 on Linux (99 tests). The app is not part of that build. This environment has no iOS 27.1 SDK, so the Duo target, the SwiftData container, Transferable, and ImageRenderer were not compiled here.
+The package tests need Swift 6. They were run with Swift 6.4 on Linux (102 tests). The app is not part of that build. This environment has no iOS 27.1 SDK, so the Duo target, the SwiftData container, Transferable, ImageRenderer, and the inline TextField were not compiled here.
 
 ```sh
 swift build
@@ -73,6 +73,7 @@ Check these on the iPhone Duo simulator in Xcode 27.1. This environment could no
 13. Copy and paste the selection. The paste sits slightly down and to the right. An image still draws. Undo removes the pasted elements.
 14. With the canvas focused, Delete removes the selection, and the arrow keys nudge it by one point. ⌘Z and ⇧⌘Z still undo and redo the same stack as the toolbar.
 15. Export PNG and share it. The image is the page, without selection handles. A drag that has not been released is not in the file. After a committed edit, stop the app and open the project again. The duplicate, the group, and the paste are still there.
+16. Tap a text element to select it, then tap it again. Type in the frame. Tap outside, press Return, or tap Done. Undo removes that string change in one step. Escape restores the previous string without a new step. Handles stay hidden during the edit. A short press that is not editing still only selects, and hold-to-move still waits about a quarter second. A dashed element does not enter edit. Clearing the string leaves the element in place.
 
 ## Layer rules
 

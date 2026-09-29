@@ -12,6 +12,11 @@ final class EditorModel {
     var primarySelection: CanvasElement.ID?
     /// Every selected id, including `primarySelection`. The inspector edits the primary only.
     var selectedIDs: [CanvasElement.ID] = []
+    /// The text element being edited on the canvas. Nil when the field is closed.
+    var inlineTextEditingID: CanvasElement.ID?
+    /// Keystrokes for the open inline field. The document string changes only on commit.
+    var inlineTextDraft = ""
+    private var inlineTextOriginal = ""
     /// Compact width presents the inspector as a sheet. Regular width ignores this flag.
     var inspectorPresented = false
 
@@ -109,12 +114,17 @@ final class EditorModel {
         resizeEdit != nil || rotateEdit != nil
     }
 
+    var isEditingTextInline: Bool { inlineTextEditingID != nil }
+
     var canUndo: Bool { session.commandManager.canUndo }
     var canRedo: Bool { session.commandManager.canRedo }
     var undoActionName: String { session.commandManager.undoActionName }
     var redoActionName: String { session.commandManager.redoActionName }
 
     func select(_ id: CanvasElement.ID?) {
+        if id != inlineTextEditingID {
+            commitInlineTextEdit()
+        }
         if id != primarySelection {
             endStyleEdit()
             session.commandManager.flushContinuousEdits()
@@ -131,6 +141,7 @@ final class EditorModel {
     /// Adds `id` to the selection, or removes it. The tapped element becomes primary when added.
     func toggleSelection(_ id: CanvasElement.ID) {
         guard document.element(id) != nil else { return }
+        commitInlineTextEdit()
         endStyleEdit()
         session.commandManager.flushContinuousEdits()
         if let index = selectedIDs.firstIndex(of: id) {
@@ -145,6 +156,7 @@ final class EditorModel {
     }
 
     func undo() {
+        cancelInlineTextEdit()
         cancelInFlightEdit()
         continuousFlushTask?.cancel()
         session.commandManager.undo()
@@ -152,13 +164,45 @@ final class EditorModel {
     }
 
     func redo() {
+        cancelInlineTextEdit()
         cancelInFlightEdit()
         continuousFlushTask?.cancel()
         session.commandManager.redo()
         pruneSelection()
     }
 
+    /// Opens in-place editing for a text element that is already the primary selection.
+    ///
+    /// Other selected elements stay selected. The string is not a command until
+    /// `commitInlineTextEdit()`. An empty string is kept.
+    func beginInlineTextEdit(_ id: CanvasElement.ID) {
+        guard document.element(id)?.type == .text else { return }
+        guard primarySelection == id else { return }
+        if inlineTextEditingID == id { return }
+        commitInlineTextEdit()
+        guard primarySelection == id, let text = document.element(id)?.text else { return }
+        inlineTextOriginal = text.string
+        inlineTextDraft = text.string
+        inlineTextEditingID = id
+    }
+
+    /// Writes the draft with `UpdateTextCommand` when it differs. One undo step.
+    func commitInlineTextEdit() {
+        guard let id = inlineTextEditingID else { return }
+        let draft = inlineTextDraft
+        let original = inlineTextOriginal
+        clearInlineTextEdit()
+        guard draft != original else { return }
+        setTextString(draft, for: id)
+    }
+
+    /// Drops the draft. The document string stays as it was when editing began.
+    func cancelInlineTextEdit() {
+        clearInlineTextEdit()
+    }
+
     func duplicateSelection() {
+        commitInlineTextEdit()
         guard canDuplicate else { return }
         prepareForDiscreteCommand()
         let primary = primarySelection
@@ -168,6 +212,7 @@ final class EditorModel {
 
     /// Duplicates the current selection when `id` is in it, otherwise duplicates `id` alone.
     func duplicateElement(_ id: CanvasElement.ID) {
+        commitInlineTextEdit()
         if selectedIDs.contains(id) {
             duplicateSelection()
             return
@@ -178,6 +223,7 @@ final class EditorModel {
     }
 
     func groupSelection() {
+        commitInlineTextEdit()
         guard canGroup else { return }
         prepareForDiscreteCommand()
         guard let groupID = session.commandManager.group(selectedIDs) else { return }
@@ -186,6 +232,7 @@ final class EditorModel {
     }
 
     func ungroupSelection() {
+        commitInlineTextEdit()
         guard canUngroup else { return }
         prepareForDiscreteCommand()
         let released = session.commandManager.ungroup(selectedIDs)
@@ -195,6 +242,7 @@ final class EditorModel {
     }
 
     func deleteSelection() {
+        guard inlineTextEditingID == nil else { return }
         guard !selectedIDs.isEmpty else { return }
         prepareForDiscreteCommand()
         session.commandManager.delete(selectedIDs)
@@ -203,6 +251,7 @@ final class EditorModel {
 
     /// Moves the selection by `dx` and `dy` canvas points. One Move step, including group children.
     func nudgeSelection(dx: Double, dy: Double) {
+        guard inlineTextEditingID == nil else { return }
         guard dx != 0 || dy != 0 else { return }
         guard !selectedIDs.isEmpty else { return }
         prepareForDiscreteCommand()
@@ -541,7 +590,7 @@ final class EditorModel {
 
     /// Live drag. `translation` is in the artboard's view space; `scale` converts it to canvas points.
     func previewMove(of id: CanvasElement.ID, translationX: Double, translationY: Double, scale: Double) {
-        guard resizeEdit == nil, rotateEdit == nil else { return }
+        guard resizeEdit == nil, rotateEdit == nil, inlineTextEditingID == nil else { return }
         guard scale > 0, document.element(id) != nil else { return }
         if moveEdit == nil {
             endStyleEdit()
@@ -586,6 +635,7 @@ final class EditorModel {
         artboardTranslationY: Double,
         scale: Double
     ) {
+        guard inlineTextEditingID == nil else { return }
         guard scale > 0, document.element(id) != nil else { return }
         if resizeEdit == nil {
             guard let current = document.element(id) else { return }
@@ -628,7 +678,7 @@ final class EditorModel {
     }
 
     func previewRotate(of id: CanvasElement.ID, canvasPoint: CanvasPoint) {
-        guard document.element(id) != nil else { return }
+        guard inlineTextEditingID == nil, document.element(id) != nil else { return }
         if rotateEdit == nil {
             guard let current = document.element(id) else { return }
             endMove()
@@ -684,11 +734,19 @@ final class EditorModel {
     /// Leaving the app calls this before the project save. The preview is not written.
     /// Ending it records one command, and that commit is what gets saved.
     func commitOpenEdits() {
+        commitInlineTextEdit()
         endMove()
         endResize()
         endRotate()
         endStyleEdit()
         session.commandManager.flushContinuousEdits()
+    }
+
+    /// Drops a body hold that never moved, so a tap can still open inline text.
+    func cancelStationaryMove() {
+        guard moveEdit != nil else { return }
+        moveEdit?.cancel()
+        clearMove()
     }
 
     /// Drops a drag that the gesture system cancelled, or that a pose change interrupted.
@@ -816,6 +874,12 @@ final class EditorModel {
         if let primary, !selectedIDs.contains(primary) {
             selectedIDs.append(primary)
         }
+    }
+
+    private func clearInlineTextEdit() {
+        inlineTextEditingID = nil
+        inlineTextDraft = ""
+        inlineTextOriginal = ""
     }
 
     private func pruneSelection() {
