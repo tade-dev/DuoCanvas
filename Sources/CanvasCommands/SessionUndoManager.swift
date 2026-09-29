@@ -86,3 +86,5 @@ final class SessionUndoManager {
         }
     }
 }
+
+extension SessionUndoManager: UndoRecording {}

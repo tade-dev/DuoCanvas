@@ -93,6 +93,29 @@ public struct ResizeElementCommand: CanvasCommand {
     }
 }
 
+public struct RotateElementCommand: CanvasCommand {
+    public let elementID: CanvasElement.ID
+    public let from: CanvasRotation
+    public let to: CanvasRotation
+    public var actionName: String { "Rotate" }
+
+    public init(elementID: CanvasElement.ID, from: CanvasRotation, to: CanvasRotation) {
+        self.elementID = elementID
+        self.from = from
+        self.to = to
+    }
+
+    public func apply(to document: CanvasDocument) {
+        document.update(elementID) { element in
+            element.rotation = to
+        }
+    }
+
+    public func inverse() -> any CanvasCommand {
+        RotateElementCommand(elementID: elementID, from: to, to: from)
+    }
+}
+
 public struct UpdateStyleCommand: CanvasCommand {
     public let elementID: CanvasElement.ID
     public let from: ElementStyle
