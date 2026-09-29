@@ -9,5 +9,8 @@ struct DuoCanvasApp: App {
             ProjectListView()
         }
         .modelContainer(container)
+        .commands {
+            CanvasEditCommands()
+        }
     }
 }

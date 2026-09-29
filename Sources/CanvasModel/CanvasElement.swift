@@ -1,6 +1,6 @@
 import Foundation
 
-public enum CanvasElementType: String, Equatable, Hashable, Sendable, CaseIterable {
+public enum CanvasElementType: String, Equatable, Hashable, Sendable, Codable, CaseIterable {
     case rectangle
     case roundedRectangle
     case circle
@@ -10,7 +10,7 @@ public enum CanvasElementType: String, Equatable, Hashable, Sendable, CaseIterab
     case group
 }
 
-public enum CanvasFontWeight: String, Equatable, Hashable, Sendable, CaseIterable {
+public enum CanvasFontWeight: String, Equatable, Hashable, Sendable, Codable, CaseIterable {
     case ultraLight
     case thin
     case light
@@ -23,13 +23,13 @@ public enum CanvasFontWeight: String, Equatable, Hashable, Sendable, CaseIterabl
 }
 
 /// Horizontal alignment. Leading and trailing follow the layout direction used when the text is drawn.
-public enum CanvasTextAlignment: String, Equatable, Hashable, Sendable {
+public enum CanvasTextAlignment: String, Equatable, Hashable, Sendable, Codable {
     case leading
     case center
     case trailing
 }
 
-public struct TextAttributes: Equatable, Hashable, Sendable {
+public struct TextAttributes: Equatable, Hashable, Sendable, Codable {
     public var string: String
     public var fontName: String
     public var fontSize: Double
@@ -55,7 +55,7 @@ public struct TextAttributes: Equatable, Hashable, Sendable {
 }
 
 /// Identity of an image asset. Bytes live outside the document.
-public struct ImageRef: Equatable, Hashable, Sendable {
+public struct ImageRef: Equatable, Hashable, Sendable, Codable {
     public var id: UUID
 
     public init(id: UUID = UUID()) {
@@ -64,7 +64,7 @@ public struct ImageRef: Equatable, Hashable, Sendable {
 }
 
 /// The appearance fields an `UpdateStyleCommand` replaces as a group.
-public struct ElementStyle: Equatable, Hashable, Sendable {
+public struct ElementStyle: Equatable, Hashable, Sendable, Codable {
     public var opacity: Double
     public var fill: Paint?
     public var stroke: Stroke?
@@ -83,7 +83,7 @@ public struct ElementStyle: Equatable, Hashable, Sendable {
     }
 }
 
-public struct CanvasElement: Equatable, Hashable, Sendable, Identifiable {
+public struct CanvasElement: Equatable, Hashable, Sendable, Codable, Identifiable {
     public typealias ID = UUID
 
     public var id: ID
@@ -99,7 +99,7 @@ public struct CanvasElement: Equatable, Hashable, Sendable, Identifiable {
     public var text: TextAttributes?
     public var image: ImageRef?
     public var parentID: ID?
-    /// Caller-managed until a grouping command exists. Removing an element does not edit this list.
+    /// Direct children, back to front. Group, ungroup, and delete keep this list and `parentID` together.
     public var childIDs: [ID]
 
     public init(

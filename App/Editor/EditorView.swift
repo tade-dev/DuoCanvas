@@ -11,6 +11,7 @@ struct EditorView: View {
     var onCommittedRevision: () -> Void = {}
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var photoItem: PhotosPickerItem?
+    @State private var exportPNG: Data?
 
     var body: some View {
         AdaptiveEditorLayout(editor: editor)
@@ -19,6 +20,15 @@ struct EditorView: View {
             .toolbar {
                 ToolbarItemGroup(placement: .automatic) {
                     addMenu
+                    arrangeMenu
+                    if let exportPNG {
+                        ShareLink(
+                            item: CanvasPNG(data: exportPNG),
+                            preview: SharePreview(navigationTitle)
+                        ) {
+                            Label("Export PNG", systemImage: "square.and.arrow.up")
+                        }
+                    }
                     Button {
                         editor.undo()
                     } label: {
@@ -55,6 +65,39 @@ struct EditorView: View {
             .onChange(of: editor.document.revision) { _, _ in
                 onCommittedRevision()
             }
+            .task(id: editor.document.revision) {
+                exportPNG = CanvasPNGRenderer.pngData(
+                    canvasSize: editor.document.canvasConfig.size,
+                    background: editor.document.canvasConfig.background,
+                    elements: editor.document.orderedElements,
+                    images: editor.imageStore.dataByID
+                )
+            }
+    }
+
+    private var arrangeMenu: some View {
+        Menu {
+            Button {
+                editor.duplicateSelection()
+            } label: {
+                Label("Duplicate", systemImage: "plus.square.on.square")
+            }
+            .disabled(!editor.canDuplicate)
+            Button {
+                editor.groupSelection()
+            } label: {
+                Label("Group", systemImage: "square.on.square")
+            }
+            .disabled(!editor.canGroup)
+            Button {
+                editor.ungroupSelection()
+            } label: {
+                Label("Ungroup", systemImage: "square.slash")
+            }
+            .disabled(!editor.canUngroup)
+        } label: {
+            Label("Arrange", systemImage: "square.on.square")
+        }
     }
 
     private var addMenu: some View {

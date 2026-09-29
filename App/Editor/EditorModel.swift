@@ -10,12 +10,17 @@ final class EditorModel {
     let session: EditingSession
 
     var primarySelection: CanvasElement.ID?
+    /// Every selected id, including `primarySelection`. The inspector edits the primary only.
+    var selectedIDs: [CanvasElement.ID] = []
     /// Compact width presents the inspector as a sheet. Regular width ignores this flag.
     var inspectorPresented = false
 
     private var moveEdit: CoalescedEdit?
-    private var moveOrigin: CanvasPoint?
+    private var moveOrigins: [CanvasElement.ID: CanvasPoint] = [:]
     private var movingID: CanvasElement.ID?
+    /// Clipboard elements last pasted, so a repeat paste steps further from that source.
+    private var lastPasteElements: [CanvasElement] = []
+    private var pasteRepeat = 0
     private var resizeEdit: CoalescedEdit?
     private var resizeStartPosition: CanvasPoint?
     private var resizeStartSize: CanvasSize?
@@ -73,6 +78,31 @@ final class EditorModel {
         return document.element(primarySelection)
     }
 
+    /// Selected elements other than the one the inspector is editing.
+    var additionalSelectionCount: Int {
+        selectedIDs.filter { $0 != primarySelection }.count
+    }
+
+    var canDuplicate: Bool {
+        !CanvasStructure.roots(
+            among: selectedIDs,
+            order: document.order,
+            elements: document.elements
+        ).isEmpty
+    }
+
+    var canGroup: Bool {
+        CanvasStructure.roots(
+            among: selectedIDs,
+            order: document.order,
+            elements: document.elements
+        ).count >= 2
+    }
+
+    var canUngroup: Bool {
+        selectedIDs.contains { document.element($0)?.type == .group }
+    }
+
     var activeMoveID: CanvasElement.ID? { movingID }
 
     var isAdjustingWithHandle: Bool {
@@ -89,19 +119,129 @@ final class EditorModel {
             endStyleEdit()
             session.commandManager.flushContinuousEdits()
         }
+        guard let id, document.element(id) != nil else {
+            primarySelection = nil
+            selectedIDs = []
+            return
+        }
         primarySelection = id
+        selectedIDs = [id]
+    }
+
+    /// Adds `id` to the selection, or removes it. The tapped element becomes primary when added.
+    func toggleSelection(_ id: CanvasElement.ID) {
+        guard document.element(id) != nil else { return }
+        endStyleEdit()
+        session.commandManager.flushContinuousEdits()
+        if let index = selectedIDs.firstIndex(of: id) {
+            selectedIDs.remove(at: index)
+            if primarySelection == id {
+                primarySelection = selectedIDs.last
+            }
+        } else {
+            selectedIDs.append(id)
+            primarySelection = id
+        }
     }
 
     func undo() {
         cancelInFlightEdit()
         continuousFlushTask?.cancel()
         session.commandManager.undo()
+        pruneSelection()
     }
 
     func redo() {
         cancelInFlightEdit()
         continuousFlushTask?.cancel()
         session.commandManager.redo()
+        pruneSelection()
+    }
+
+    func duplicateSelection() {
+        guard canDuplicate else { return }
+        prepareForDiscreteCommand()
+        let primary = primarySelection
+        let result = session.commandManager.duplicate(selectedIDs)
+        adoptReplication(result, primarySource: primary)
+    }
+
+    /// Duplicates the current selection when `id` is in it, otherwise duplicates `id` alone.
+    func duplicateElement(_ id: CanvasElement.ID) {
+        if selectedIDs.contains(id) {
+            duplicateSelection()
+            return
+        }
+        prepareForDiscreteCommand()
+        let result = session.commandManager.duplicate([id])
+        adoptReplication(result, primarySource: id)
+    }
+
+    func groupSelection() {
+        guard canGroup else { return }
+        prepareForDiscreteCommand()
+        guard let groupID = session.commandManager.group(selectedIDs) else { return }
+        primarySelection = groupID
+        selectedIDs = [groupID]
+    }
+
+    func ungroupSelection() {
+        guard canUngroup else { return }
+        prepareForDiscreteCommand()
+        let released = session.commandManager.ungroup(selectedIDs)
+        guard !released.isEmpty else { return }
+        selectedIDs = released
+        primarySelection = released.last
+    }
+
+    func deleteSelection() {
+        guard !selectedIDs.isEmpty else { return }
+        prepareForDiscreteCommand()
+        session.commandManager.delete(selectedIDs)
+        pruneSelection()
+    }
+
+    /// Moves the selection by `dx` and `dy` canvas points. One Move step, including group children.
+    func nudgeSelection(dx: Double, dy: Double) {
+        guard dx != 0 || dy != 0 else { return }
+        guard !selectedIDs.isEmpty else { return }
+        prepareForDiscreteCommand()
+        session.commandManager.translate(selectedIDs, by: CanvasPoint(x: dx, y: dy))
+    }
+
+    func makeClipboard() -> CanvasClipboard? {
+        let clipboard = CanvasClipboard.capture(
+            ids: selectedIDs,
+            order: document.order,
+            elements: document.elements,
+            imageData: { imageStore.data(for: $0) }
+        )
+        guard !clipboard.elements.isEmpty else { return nil }
+        return clipboard
+    }
+
+    /// Pastes `clipboard`. The first paste of a source sits 16 points down and right; a repeat steps further.
+    func paste(_ clipboard: CanvasClipboard) {
+        guard !clipboard.elements.isEmpty else { return }
+        prepareForDiscreteCommand()
+        for image in clipboard.images where imageStore.data(for: image.id) == nil {
+            imageStore.store(image.data, for: image.id)
+        }
+        if clipboard.elements == lastPasteElements {
+            pasteRepeat += 1
+        } else {
+            lastPasteElements = clipboard.elements
+            pasteRepeat = 1
+        }
+        let step = Double(pasteRepeat)
+        let result = session.commandManager.paste(
+            clipboard,
+            offset: CanvasPoint(
+                x: CanvasDuplication.offset.x * step,
+                y: CanvasDuplication.offset.y * step
+            )
+        )
+        adoptReplication(result, primarySource: nil)
     }
 
     func setX(_ x: Double, for id: CanvasElement.ID) {
@@ -404,23 +544,37 @@ final class EditorModel {
         guard resizeEdit == nil, rotateEdit == nil else { return }
         guard scale > 0, document.element(id) != nil else { return }
         if moveEdit == nil {
-            guard let current = document.element(id) else { return }
             endStyleEdit()
             session.commandManager.flushContinuousEdits()
-            primarySelection = id
+            if !selectedIDs.contains(id) {
+                primarySelection = id
+                selectedIDs = [id]
+            }
             movingID = id
-            moveOrigin = current.position
+            var origins: [CanvasElement.ID: CanvasPoint] = [:]
+            let targets = CanvasStructure.translationTargets(
+                among: selectedIDs,
+                order: document.order,
+                elements: document.elements
+            )
+            for target in targets {
+                if let position = document.element(target)?.position {
+                    origins[target] = position
+                }
+            }
+            moveOrigins = origins
             beginCanvasGesture()
             moveEdit = session.commandManager.beginCoalescedEdit(actionName: "Move")
         }
-        guard movingID == id, let origin = moveOrigin else { return }
-        let position = CanvasPoint(
-            x: origin.x + translationX / scale,
-            y: origin.y + translationY / scale
-        )
+        guard movingID == id else { return }
+        let dx = translationX / scale
+        let dy = translationY / scale
+        let origins = moveOrigins
         moveEdit?.preview { document in
-            document.update(id) { element in
-                element.position = position
+            for (target, origin) in origins {
+                document.update(target) { element in
+                    element.position = CanvasPoint(x: origin.x + dx, y: origin.y + dy)
+                }
             }
         }
     }
@@ -650,10 +804,35 @@ final class EditorModel {
         session.commandManager.updateText(of: id, body)
     }
 
+    private func adoptReplication(_ result: ElementReplication, primarySource: CanvasElement.ID?) {
+        guard !result.insertedIDs.isEmpty else { return }
+        let roots = result.insertedIDs.filter { document.element($0)?.parentID == nil }
+        let mapped = primarySource.flatMap { result.idMap[$0] }
+        let primary = mapped.map {
+            CanvasStructure.selectionRoot(of: $0, in: document.elements)
+        } ?? roots.last
+        selectedIDs = roots
+        primarySelection = primary
+        if let primary, !selectedIDs.contains(primary) {
+            selectedIDs.append(primary)
+        }
+    }
+
+    private func pruneSelection() {
+        selectedIDs = selectedIDs.filter { document.element($0) != nil }
+        if let primarySelection, document.element(primarySelection) == nil {
+            self.primarySelection = nil
+        }
+        if primarySelection == nil {
+            primarySelection = selectedIDs.last
+        }
+    }
+
     private func insertNew(_ element: CanvasElement) {
         prepareForDiscreteCommand()
         session.commandManager.insert(element)
         primarySelection = element.id
+        selectedIDs = [element.id]
     }
 
     private func nextOrigin() -> CanvasPoint {
@@ -683,7 +862,7 @@ final class EditorModel {
 
     private func clearMove() {
         moveEdit = nil
-        moveOrigin = nil
+        moveOrigins = [:]
         movingID = nil
     }
 

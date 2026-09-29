@@ -9,8 +9,10 @@ struct CanvasView: View {
     var layoutContext: CanvasLayoutContext
 
     @Environment(\.colorSchemeContrast) private var contrast
+    @FocusState private var canvasFocused: Bool
     @GestureState private var moveGestureActive = false
     @State private var pointer: PointerSession?
+    @State private var shiftHeld = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -24,22 +26,30 @@ struct CanvasView: View {
             ZStack {
                 Color(uiColor: .systemGroupedBackground)
                     .contentShape(Rectangle())
-                    .onTapGesture { editor.select(nil) }
+                    .onTapGesture {
+                        canvasFocused = true
+                        editor.select(nil)
+                    }
                 ZStack(alignment: .topLeading) {
                     artboardBackground
                         .frame(width: fitted.width, height: fitted.height)
                     ForEach(editor.document.orderedElements) { element in
+                        let role = selectionRole(of: element.id)
                         CanvasElementView(
                             element: element,
                             scale: scale,
                             imageData: imageData(for: element),
-                            isSelected: editor.primarySelection == element.id,
+                            role: role,
                             selectionLineWidth: selectionLineWidth(
                                 for: element,
                                 scale: scale,
                                 artboardOrigin: origin
                             ),
-                            onSelect: { editor.select(element.id) }
+                            onSelect: { editor.select(element.id) },
+                            onDuplicate: { editor.duplicateElement(element.id) },
+                            onToggleSelection: { editor.toggleSelection(element.id) },
+                            onGroup: role == .primary && editor.canGroup ? { editor.groupSelection() } : nil,
+                            onUngroup: role == .primary && editor.canUngroup ? { editor.ungroupSelection() } : nil
                         )
                         .position(center(of: element, scale: scale))
                     }
@@ -65,6 +75,37 @@ struct CanvasView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Canvas")
+        .focusable()
+        .focused($canvasFocused)
+        .focusedValue(\.canvasEditActions, CanvasEditActions(
+            canDuplicate: editor.canDuplicate,
+            duplicate: { editor.duplicateSelection() }
+        ))
+        .modifier(CanvasClipboardModifier(
+            clipboard: editor.makeClipboard(),
+            onPaste: { editor.paste($0) }
+        ))
+        .onDeleteCommand { editor.deleteSelection() }
+        .onKeyPress(phases: [.down, .up]) { press in
+            shiftHeld = press.modifiers.contains(.shift)
+            guard press.phase == .down else { return .ignored }
+            switch press.key {
+            case .upArrow:
+                editor.nudgeSelection(dx: 0, dy: -1)
+            case .downArrow:
+                editor.nudgeSelection(dx: 0, dy: 1)
+            case .leftArrow:
+                editor.nudgeSelection(dx: -1, dy: 0)
+            case .rightArrow:
+                editor.nudgeSelection(dx: 1, dy: 0)
+            case .deleteForward:
+                editor.deleteSelection()
+            default:
+                return .ignored
+            }
+            return .handled
+        }
+        .onAppear { canvasFocused = true }
         .onChange(of: moveGestureActive) { _, active in
             if !active {
                 editor.noteCanvasGestureEnded()
@@ -88,6 +129,7 @@ struct CanvasView: View {
                 state = true
             }
             .onChanged { value in
+                canvasFocused = true
                 var session = session(for: value, scale: scale, artboardOrigin: artboardOrigin)
                 if session.phase == .pending {
                     session.phase = CanvasPointerRouting.intent(
@@ -123,7 +165,7 @@ struct CanvasView: View {
                         scale: scale,
                         artboardOrigin: artboardOrigin
                     )
-                    select(for: hit)
+                    select(for: hit, additive: shiftHeld)
                 }
                 closePointer()
             }
@@ -184,25 +226,41 @@ struct CanvasView: View {
         }
     }
 
-    private func select(for contact: PointerContact) {
-        if contact.onBody {
-            editor.select(contact.elementID)
-        } else if contact.handleOutsideBody == nil {
+    private func select(for contact: PointerContact, additive: Bool) {
+        canvasFocused = true
+        if contact.onBody, let id = contact.elementID {
+            if additive {
+                editor.toggleSelection(id)
+            } else {
+                editor.select(id)
+            }
+        } else if contact.handleOutsideBody == nil, !additive {
             editor.select(nil)
         }
     }
 
+    private func selectionRole(of id: CanvasElement.ID) -> ElementSelectionRole {
+        if editor.primarySelection == id { return .primary }
+        if editor.selectedIDs.contains(id) { return .member }
+        return .none
+    }
+
     /// Body wins over a handle box that covers it. A handle only wins outside that body.
+    ///
+    /// Shift-tap skips that preference so a second element can join the selection.
+    /// A hit on a grouped child selects the outermost group.
     private func contact(at point: CGPoint, scale: Double, artboardOrigin: CGPoint) -> PointerContact {
-        if let selected = editor.selectedElement, bodyContains(selected, point: point, scale: scale) {
+        if !shiftHeld, let selected = editor.selectedElement, bodyContains(selected, point: point, scale: scale) {
             return PointerContact(onBody: true, elementID: selected.id, handleOutsideBody: nil)
         }
-        if let handle = selectionHandle(at: point, scale: scale, artboardOrigin: artboardOrigin),
+        if !shiftHeld,
+           let handle = selectionHandle(at: point, scale: scale, artboardOrigin: artboardOrigin),
            let selected = editor.selectedElement {
             return PointerContact(onBody: false, elementID: selected.id, handleOutsideBody: handle)
         }
         if let id = elementID(at: point, scale: scale) {
-            return PointerContact(onBody: true, elementID: id, handleOutsideBody: nil)
+            let root = CanvasStructure.selectionRoot(of: id, in: editor.document.elements)
+            return PointerContact(onBody: true, elementID: root, handleOutsideBody: nil)
         }
         return PointerContact(onBody: false, elementID: nil, handleOutsideBody: nil)
     }

@@ -39,7 +39,13 @@ struct InspectorView: View {
                     } header: {
                         Text(element.type.displayName)
                     } footer: {
-                        Text("Rotation is in degrees, clockwise.")
+                        if editor.additionalSelectionCount == 1 {
+                            Text("Rotation is in degrees, clockwise. This is the primary selection. 1 more element is selected.")
+                        } else if editor.additionalSelectionCount > 1 {
+                            Text("Rotation is in degrees, clockwise. This is the primary selection. \(editor.additionalSelectionCount) more elements are selected.")
+                        } else {
+                            Text("Rotation is in degrees, clockwise.")
+                        }
                     }
                     Section("Appearance") {
                         AppearanceInspector(editor: editor, element: element, fields: fields)

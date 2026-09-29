@@ -3,7 +3,7 @@ import Foundation
 /// Straight (non-premultiplied) RGBA in the range 0...1.
 ///
 /// The canvas core does not import SwiftUI. Mapping to a resolved system colour happens in the app.
-public struct CanvasColor: Equatable, Hashable, Sendable {
+public struct CanvasColor: Equatable, Hashable, Sendable, Codable {
     public var red: Double
     public var green: Double
     public var blue: Double
@@ -22,7 +22,7 @@ public struct CanvasColor: Equatable, Hashable, Sendable {
 }
 
 /// A solid fill. Further paint kinds can be added without changing element identity.
-public struct Paint: Equatable, Hashable, Sendable {
+public struct Paint: Equatable, Hashable, Sendable, Codable {
     public var color: CanvasColor
 
     public init(color: CanvasColor) {
@@ -31,7 +31,7 @@ public struct Paint: Equatable, Hashable, Sendable {
 }
 
 /// Stroke colour and width, in points.
-public struct Stroke: Equatable, Hashable, Sendable {
+public struct Stroke: Equatable, Hashable, Sendable, Codable {
     public var color: CanvasColor
     public var width: Double
 

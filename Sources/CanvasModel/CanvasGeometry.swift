@@ -1,7 +1,7 @@
 import Foundation
 
 /// A point in canvas space, in points. The origin and axis direction belong to the view layer.
-public struct CanvasPoint: Equatable, Hashable, Sendable {
+public struct CanvasPoint: Equatable, Hashable, Sendable, Codable {
     public var x: Double
     public var y: Double
 
@@ -17,7 +17,7 @@ public struct CanvasPoint: Equatable, Hashable, Sendable {
 ///
 /// Width and height are not required to be positive. A line stores its end as an offset from
 /// its start, so either component may be negative.
-public struct CanvasSize: Equatable, Hashable, Sendable {
+public struct CanvasSize: Equatable, Hashable, Sendable, Codable {
     public var width: Double
     public var height: Double
 
@@ -33,7 +33,7 @@ public struct CanvasSize: Equatable, Hashable, Sendable {
 }
 
 /// Rotation stored in degrees, clockwise. Values are not normalised.
-public struct CanvasRotation: Equatable, Hashable, Sendable {
+public struct CanvasRotation: Equatable, Hashable, Sendable, Codable {
     public var degrees: Double
 
     public init(degrees: Double) {

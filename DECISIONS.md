@@ -210,3 +210,33 @@ Opening a project builds an `EditingSession` from the saved document and image b
 ### Left out on purpose
 
 No hinge hardening, no second window, no duplicate or group commands, no PNG export, and no design-system controls. The app target was not compiled here. There is no iOS 27.1 SDK in this environment.
+
+## Milestone 6
+
+### Commands
+
+Duplicate, group, ungroup, paste, multi-delete, and a multi-element move are still one step each on the existing command stack. The step is a `DocumentStateCommand`: the mutation runs without advancing `revision`, then one undo registration applies the resulting snapshot. A no-op, such as grouping a single element, records nothing. A plain move of an element with no children still uses `MoveElementCommand`.
+
+Duplicate inserts copies in front, 16 points down and right. A copied group includes its descendants. New element ids are assigned; `ImageRef` ids stay, so the session's bytes still draw. Paste uses the same retargeting. The first paste of a clipboard is offset by 16 points, and a repeat of that same clipboard steps by another 16. Image bytes from the clipboard are stored only when that id is missing. Undo of paste or duplicate removes the elements and leaves the bytes, matching image insert.
+
+Group requires two or more roots. A selected child of a selected group is not a second member. The group frame is the union of the members' unrotated frames, rotation stays 0, and the group is inserted just in front of its front-most member. Members keep their positions and take the new parent. A member that belonged to another group is removed from that group's `childIDs`. Ungroup deletes the group element, gives its parent to the children, and leaves nested groups grouped unless those groups were selected too. Delete of a group deletes its descendants. Delete of a child only removes that child from the parent list.
+
+Moving a group, from the inspector or from a nudge, moves its descendants by the same delta and does it once, even if a child id is also in the set. Resizing or rotating a group changes the group element only. Children stay where they are. The hold-to-move drag uses the same descendant walk inside the existing coalesced Move, so the preview is still not a save.
+
+### Selection
+
+`primarySelection` is what the inspector edits. `selectedIDs` holds the rest of the selection with it. Extra elements get a dashed accent stroke and no handles, so the primary stays the one with the solid stroke and the resize and rotate handles. The inspector does not average values. Its footer says how many other elements are selected.
+
+A tap selects the outermost group when the hit element has a group parent. VoiceOver's default action still selects the element that has focus, so a child inside a group can be inspected. Shift-tap toggles membership. Add to Selection and Remove from Selection are accessibility actions on each element. Duplicate, Group, and Ungroup are actions on the primary element when they apply. The Arrange menu has the same three commands. ⌘D is an Edit menu item wired with a focused value, so it is disabled while a text field has focus. ⌘Z and ⇧⌘Z are untouched; the system undo manager still owns them.
+
+### Keyboard and pasteboard
+
+Arrow keys nudge the selection by 1 canvas point. Each nudge is one Move. Delete and forward delete remove the selection as one Delete. ⌘C and ⌘V use `copyable` and `pasteDestination` with a `Codable` clipboard (`CanvasClipboard`) and an imported UTI, `dev.tade.duocanvas.elements`. The package does not import Transferable or SwiftUI. The canvas is focusable. Shortcuts are delivered there, not to the inspector fields.
+
+### PNG
+
+The toolbar shares a PNG of the committed artboard through `ShareLink` and `ImageRenderer` at 2x. Selection chrome is not drawn. A drag preview is not in that image, because the renderer runs when `revision` changes. The package tests do not draw it.
+
+### Left out on purpose
+
+No fold, hinge, occlusion, or multi-window work. No deeper accessibility pass. Group resize and rotate do not transform children. There is no marquee. The app target was not compiled here. There is no iOS 27.1 SDK in this environment.
