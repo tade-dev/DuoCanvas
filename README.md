@@ -35,13 +35,13 @@ Open `DuoCanvas.xcodeproj` in Xcode 27.1. The run destination is the iPhone Duo 
 
 The window is one `NavigationStack`. Home is the root. The arrangement sits inside the editor, not the other way around. Regular width uses `ArrangementView` with `.arrangementViewStyle(.split)`: canvas primary, inspector secondary. The system puts them side by side when the container is wider than it is tall, and stacks the canvas above the inspector when it is taller. Compact width shows the canvas and presents the inspector as a sheet from the Inspector toolbar item. The sheet uses medium and large detents, and the canvas stays interactive up through the medium detent.
 
-A new project is an empty 1200 by 800 point page. The page is fitted to the pane. There is no pan or zoom yet. Dragging an element moves it as one undo step. A short press selects it. The selection mark is a system stroke plus square resize handles and a round rotate handle. A handle that would sit in an active reserved area slides along its edge.
+A new project is an empty 1200 by 800 point page. The page is fitted to the pane. There is no pan or zoom yet. Hold a press on an element for about a quarter second, then drag, to move it as one undo step. A short press selects it and does not resize. Square resize handles and the round rotate handle respond as soon as they are dragged; they do not wait for that hold. A drag that starts on the element body does not resize it. A handle that would sit in an active reserved area slides along its edge.
 
 With nothing selected, the inspector shows the page size and background. Those values are not editable yet. The Add menu inserts the shapes the model already has. Image uses the system photo picker. The bytes stay in the session until the command commits, then they are stored with the element under the same `ImageRef` id.
 
 ## Build and test
 
-The package tests need Swift 6. They were run with Swift 6.3.3 on Linux (75 tests). The app is not part of that build. This environment has no iOS 27.1 SDK, so the Duo target and the SwiftData container were not compiled here.
+The package tests need Swift 6. They were run with Swift 6.3.3 on Linux (82 tests). The app is not part of that build. This environment has no iOS 27.1 SDK, so the Duo target and the SwiftData container were not compiled here.
 
 ```sh
 swift build
@@ -62,6 +62,7 @@ Check these on the iPhone Duo simulator in Xcode 27.1. This environment could no
 6. Closed, or any compact width: the canvas is alone. Inspector opens as a sheet. Open, wider than tall: canvas and inspector sit side by side. Open, taller than wide: the canvas is above the inspector.
 7. On the way from regular to compact, the sheet should not appear by itself.
 8. Thumbnails are not generated. Rows show the name and the last-opened time.
+9. On the canvas, a short press selects an element. Hold about a quarter second, then drag, to move it. Drag a resize handle and it changes width or height immediately. Dragging the element body does not resize it.
 
 ## Layer rules
 

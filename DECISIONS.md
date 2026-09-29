@@ -157,7 +157,7 @@ A drag on a handle is one Resize or Rotate step. Resize keeps the opposite edge 
 
 If a handle's hit box meets an active reserved area, the handle slides along its edge to the nearest clear sample, in 2 point steps. A corner may use either edge. If the whole edge is blocked, the handle stays put. The numeric fields are still there. Inactive areas do not move anything. The element itself does not move.
 
-The hit shape is only the handle boxes, so a drag that starts on the element body still moves it.
+The hit shape is only the handle boxes, so a drag that starts on the element body still moves it. Milestone 4's page gesture is the one in Moving and resizing below.
 
 ### Add menu
 
@@ -184,6 +184,14 @@ The app builds one `ModelContainer` from `Schema(versionedSchema: SchemaV1.self)
 `ProjectStore` keeps the last saved field list. `EditorView` watches `CanvasDocument.revision` and asks the store to save when it changes. A preview does not change `revision`, so a drag does not write. One `ModelContext.save()` runs per commit, including undo and redo. Unchanged elements are left alone. Image bytes are assigned only when they differ, and they use `@Attribute(.externalStorage)`.
 
 Leaving the editor, or moving to the background, ends an open drag, slider, or colour edit first. That records one command if the value changed, and the save follows that commit. The preview itself is not written.
+
+### Moving and resizing
+
+One gesture on the page decides the touch. The element body never resizes. A short press selects the element under the finger. Holding for 0.25 seconds, then dragging, moves it. The move is still one command: the document previews in memory, and the command commits when the finger lifts.
+
+A resize or rotate handle responds as soon as the finger moves past the drag threshold. It does not wait for the hold. The handle counts only when the finger is outside the element body, so a handle box that covers the body does not turn the press into a resize. After the gesture has chosen move, resize, rotate, or neither, it keeps that choice.
+
+The selection overlay is drawn only. It does not take the touch. The inspector fields are unchanged.
 
 A failed save rolls the context back and shows an alert. The canvas keeps the edit. The next commit tries again.
 

@@ -10,6 +10,7 @@ struct CanvasView: View {
 
     @Environment(\.colorSchemeContrast) private var contrast
     @GestureState private var moveGestureActive = false
+    @State private var pointer: PointerSession?
 
     var body: some View {
         GeometryReader { geometry in
@@ -50,8 +51,7 @@ struct CanvasView: View {
                                 for: selected,
                                 scale: scale,
                                 artboardOrigin: origin
-                            ),
-                            editor: editor
+                            )
                         )
                         .position(center(of: selected, scale: scale))
                     }
@@ -68,6 +68,7 @@ struct CanvasView: View {
         .onChange(of: moveGestureActive) { _, active in
             if !active {
                 editor.noteCanvasGestureEnded()
+                closePointer()
             }
         }
     }
@@ -82,46 +83,128 @@ struct CanvasView: View {
     }
 
     private func pageGesture(scale: Double, artboardOrigin: CGPoint) -> some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .local)
-            .updating($moveGestureActive) { value, state, _ in
-                if distance(value.translation) >= 10 {
-                    state = true
-                }
+        DragGesture(minimumDistance: 0, coordinateSpace: .named(ArtboardCoordinate.name))
+            .updating($moveGestureActive) { _, state, _ in
+                state = true
             }
             .onChanged { value in
-                guard !editor.isAdjustingWithHandle else { return }
-                guard !hitsSelectionHandle(value.startLocation, scale: scale, artboardOrigin: artboardOrigin) else {
-                    return
+                var session = session(for: value, scale: scale, artboardOrigin: artboardOrigin)
+                if session.phase == .pending {
+                    session.phase = CanvasPointerRouting.intent(
+                        elapsed: value.time.timeIntervalSince(session.startedAt),
+                        distance: distance(value.translation),
+                        onBody: session.contact.onBody,
+                        handleOutsideBody: session.contact.handleOutsideBody
+                    )
+                    pointer = session
                 }
-                guard distance(value.translation) >= 10 else { return }
-                let id = editor.activeMoveID ?? elementID(at: value.startLocation, scale: scale)
-                guard let id else { return }
-                editor.previewMove(
-                    of: id,
-                    translationX: Double(value.translation.width),
-                    translationY: Double(value.translation.height),
-                    scale: scale
-                )
+                apply(session, value: value, scale: scale)
             }
             .onEnded { value in
-                guard !editor.isAdjustingWithHandle else { return }
-                let startedOnHandle = hitsSelectionHandle(
-                    value.startLocation,
-                    scale: scale,
-                    artboardOrigin: artboardOrigin
-                )
-                let endedOnHandle = hitsSelectionHandle(
-                    value.location,
-                    scale: scale,
-                    artboardOrigin: artboardOrigin
-                )
-                guard !startedOnHandle, !endedOnHandle else { return }
-                if distance(value.translation) < 10 {
-                    editor.select(elementID(at: value.location, scale: scale))
-                } else {
-                    editor.endMove()
+                let traveled = distance(value.translation)
+                if var session = pointer, session.startLocation == value.startLocation {
+                    if session.phase == .pending, traveled >= CanvasPointerRouting.dragSlop {
+                        session.phase = CanvasPointerRouting.intent(
+                            elapsed: value.time.timeIntervalSince(session.startedAt),
+                            distance: traveled,
+                            onBody: session.contact.onBody,
+                            handleOutsideBody: session.contact.handleOutsideBody
+                        )
+                    }
+                    apply(session, value: value, scale: scale)
                 }
+                let edited = editor.activeMoveID != nil || editor.isAdjustingWithHandle
+                editor.endMove()
+                editor.endResize()
+                editor.endRotate()
+                if !edited, traveled < CanvasPointerRouting.dragSlop {
+                    let hit = pointer?.contact ?? contact(
+                        at: value.startLocation,
+                        scale: scale,
+                        artboardOrigin: artboardOrigin
+                    )
+                    select(for: hit)
+                }
+                closePointer()
             }
+    }
+
+    private func closePointer() {
+        guard var session = pointer, !session.closed else { return }
+        session.closed = true
+        pointer = session
+    }
+
+    /// The press recorded at the finger-down point. A later event keeps that choice.
+    private func session(for value: DragGesture.Value, scale: Double, artboardOrigin: CGPoint) -> PointerSession {
+        if let pointer, !pointer.closed, pointer.startLocation == value.startLocation {
+            return pointer
+        }
+        let session = PointerSession(
+            startedAt: value.time,
+            startLocation: value.startLocation,
+            contact: contact(at: value.startLocation, scale: scale, artboardOrigin: artboardOrigin),
+            phase: .pending,
+            closed: false
+        )
+        pointer = session
+        return session
+    }
+
+    private func apply(_ session: PointerSession, value: DragGesture.Value, scale: Double) {
+        switch session.phase {
+        case .pending, .ignore:
+            return
+        case .move:
+            guard let id = session.contact.elementID else { return }
+            editor.previewMove(
+                of: id,
+                translationX: Double(value.translation.width),
+                translationY: Double(value.translation.height),
+                scale: scale
+            )
+        case .resize(let handle):
+            guard let id = session.contact.elementID else { return }
+            editor.previewResize(
+                of: id,
+                handle: handle,
+                artboardTranslationX: Double(value.translation.width),
+                artboardTranslationY: Double(value.translation.height),
+                scale: scale
+            )
+        case .rotate:
+            guard let id = session.contact.elementID else { return }
+            editor.previewRotate(
+                of: id,
+                canvasPoint: CanvasPoint(
+                    x: Double(value.location.x) / scale,
+                    y: Double(value.location.y) / scale
+                )
+            )
+        }
+    }
+
+    private func select(for contact: PointerContact) {
+        if contact.onBody {
+            editor.select(contact.elementID)
+        } else if contact.handleOutsideBody == nil {
+            editor.select(nil)
+        }
+    }
+
+    /// Body wins over a handle box that covers it. A handle only wins outside that body.
+    private func contact(at point: CGPoint, scale: Double, artboardOrigin: CGPoint) -> PointerContact {
+        if let selected = editor.selectedElement, bodyContains(selected, point: point, scale: scale) {
+            return PointerContact(onBody: true, elementID: selected.id, handleOutsideBody: nil)
+        }
+        if let handle = selectionHandle(at: point, scale: scale, artboardOrigin: artboardOrigin),
+           let selected = editor.selectedElement {
+            return PointerContact(onBody: false, elementID: selected.id, handleOutsideBody: handle)
+        }
+        if let id = elementID(at: point, scale: scale) {
+            return PointerContact(onBody: true, elementID: id, handleOutsideBody: nil)
+        }
+        return PointerContact(onBody: false, elementID: nil, handleOutsideBody: nil)
     }
 
     private func imageData(for element: CanvasElement) -> Data? {
@@ -147,8 +230,12 @@ struct CanvasView: View {
         )
     }
 
-    private func hitsSelectionHandle(_ point: CGPoint, scale: Double, artboardOrigin: CGPoint) -> Bool {
-        guard let element = editor.selectedElement else { return false }
+    private func selectionHandle(
+        at point: CGPoint,
+        scale: Double,
+        artboardOrigin: CGPoint
+    ) -> SelectionHandle? {
+        guard let element = editor.selectedElement else { return nil }
         let box = CanvasRect(origin: element.position, size: element.size).standardized
         let visualWidth = box.size.width * scale
         let visualHeight = box.size.height * scale
@@ -164,7 +251,16 @@ struct CanvasView: View {
         )
         let placements = handlePlacements(for: element, scale: scale, artboardOrigin: artboardOrigin)
         let centers = Dictionary(uniqueKeysWithValues: placements.map { ($0.handle, $0.center) })
-        return SelectionHandleLayout.hitHandle(at: local, centers: centers) != nil
+        return SelectionHandleLayout.hitHandle(at: local, centers: centers)
+    }
+
+    private func bodyContains(_ element: CanvasElement, point: CGPoint, scale: Double) -> Bool {
+        let rect = CanvasRect(
+            origin: CanvasPoint(x: element.position.x * scale, y: element.position.y * scale),
+            size: CanvasSize(width: element.size.width * scale, height: element.size.height * scale)
+        )
+        let location = CanvasPoint(x: point.x, y: point.y)
+        return rect.standardized.intersects(CanvasRect(origin: location, size: .zero))
     }
 
     private func elementID(at point: CGPoint, scale: Double) -> CanvasElement.ID? {
@@ -227,4 +323,20 @@ struct CanvasView: View {
         }
         return crossesReservedArea ? base + 1 : base
     }
+}
+
+/// One press on the page. `phase` stays at the first choice that is not pending.
+private struct PointerSession {
+    var startedAt: Date
+    var startLocation: CGPoint
+    var contact: PointerContact
+    var phase: CanvasPointerIntent
+    var closed: Bool
+}
+
+/// Where the finger went down. The body and a protruding handle are never both set.
+private struct PointerContact {
+    var onBody: Bool
+    var elementID: CanvasElement.ID?
+    var handleOutsideBody: SelectionHandle?
 }
