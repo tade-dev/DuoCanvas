@@ -3,22 +3,42 @@ import CoreGraphics
 import SwiftUI
 import UIKit
 
+/// How an element participates in the selection. Handles stay on the primary only.
+enum ElementSelectionRole: Equatable {
+    case none
+    case member
+    case primary
+}
+
 struct CanvasElementView: View {
     var element: CanvasElement
     var scale: Double
     var imageData: Data?
-    var isSelected: Bool
+    var role: ElementSelectionRole
     var selectionLineWidth: CGFloat
     var onSelect: () -> Void
+    var onDuplicate: (() -> Void)?
+    var onToggleSelection: (() -> Void)?
+    var onGroup: (() -> Void)?
+    var onUngroup: (() -> Void)?
+    /// Hides the rendered string while the canvas text field draws it.
+    var suppressesString: Bool = false
+    var onEditText: (() -> Void)? = nil
 
     var body: some View {
         content
             .opacity(element.opacity)
             .frame(width: frameSize.width, height: frameSize.height)
             .overlay {
-                if isSelected {
+                if role != .none, !suppressesString {
                     Rectangle()
-                        .strokeBorder(Color.accentColor, lineWidth: selectionLineWidth)
+                        .strokeBorder(
+                            Color.accentColor,
+                            style: StrokeStyle(
+                                lineWidth: selectionLineWidth,
+                                dash: role == .primary ? [] : [6, 4]
+                            )
+                        )
                         .allowsHitTesting(false)
                 }
             }
@@ -26,8 +46,24 @@ struct CanvasElementView: View {
             .contentShape(Rectangle())
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(CanvasFormatting.accessibilityDescription(for: element))
-            .accessibilityAddTraits(isSelected ? .isSelected : [])
+            .accessibilityValue(role == .primary ? "Primary" : "")
+            .accessibilityAddTraits(role == .none ? AccessibilityTraits() : .isSelected)
             .accessibilityAction(.default, onSelect)
+            .modifier(NamedAccessibilityAction(name: "Duplicate", perform: onDuplicate))
+            .modifier(NamedAccessibilityAction(
+                name: role == .none ? "Add to Selection" : "Remove from Selection",
+                perform: onToggleSelection
+            ))
+            .modifier(NamedAccessibilityAction(name: "Group", perform: onGroup))
+            .modifier(NamedAccessibilityAction(name: "Ungroup", perform: onUngroup))
+            .modifier(NamedAccessibilityAction(name: "Edit Text", perform: editTextAction))
+            .accessibilityHidden(suppressesString)
+    }
+
+    /// VoiceOver edits text only on the primary element, and only when the field is closed.
+    private var editTextAction: (() -> Void)? {
+        guard element.type == .text, role == .primary, !suppressesString else { return nil }
+        return onEditText
     }
 
     private var frameSize: CGSize {
@@ -77,7 +113,16 @@ struct CanvasElementView: View {
         }
     }
 
+    @ViewBuilder
     private var textBody: some View {
+        if suppressesString {
+            Color.clear
+        } else {
+            renderedText
+        }
+    }
+
+    private var renderedText: some View {
         let text = element.text
         return Text(text?.string ?? "")
             .font(
@@ -135,5 +180,19 @@ struct CanvasElementView: View {
     /// An element with no paint still has a faint fill so it can be selected.
     private var fillColor: Color {
         element.fill?.color.swiftUIColor ?? Color.primary.opacity(0.08)
+    }
+}
+
+/// Adds a named VoiceOver action only when the editor has one to perform.
+private struct NamedAccessibilityAction: ViewModifier {
+    var name: String
+    var perform: (() -> Void)?
+
+    func body(content: Content) -> some View {
+        if let perform {
+            content.accessibilityAction(named: name, perform)
+        } else {
+            content
+        }
     }
 }

@@ -59,6 +59,29 @@ struct TextCommandTests {
         #expect(session.document.element(element.id)?.text?.color == .white)
     }
 
+    @Test func anEmptyStringStaysAndUndoesAsOneTextStep() {
+        let session = EditingSession()
+        let element = CanvasElement.text("Hello")
+        let commands = session.commandManager
+        commands.insert(element)
+        let revision = session.document.revision
+        let before = session.document.copy()
+
+        commands.updateText(of: element.id) { text in
+            text.string = ""
+        }
+        #expect(commands.undoActionName == "Text")
+        #expect(session.document.revision == revision + 1)
+        #expect(session.document.element(element.id)?.type == .text)
+        #expect(session.document.element(element.id)?.text?.string == "")
+        #expect(session.document.order == [element.id])
+
+        commands.undo()
+        #expect(session.document == before)
+        commands.redo()
+        #expect(session.document.element(element.id)?.text?.string == "")
+    }
+
     @Test func unchangedTextIsNotAnUndoStep() {
         let session = EditingSession()
         let element = CanvasElement.text("Hello")
