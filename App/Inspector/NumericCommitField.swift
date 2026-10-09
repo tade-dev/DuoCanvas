@@ -1,3 +1,4 @@
+import CanvasModel
 import SwiftUI
 
 /// A labeled number that commits through `onCommit` when editing ends or the stepper moves.
@@ -13,24 +14,31 @@ struct NumericCommitField: View {
 
     @State private var draft = ""
     @FocusState private var isFocused: Bool
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var stacksFields: Bool {
+        AccessibilityChrome.resolve(isAccessibilitySize: dynamicTypeSize.isAccessibilitySize).stacksFields
+    }
 
     var body: some View {
-        LabeledContent {
-            HStack(spacing: 8) {
-                TextField(title, text: $draft)
-                    .focused($isFocused)
-                    .multilineTextAlignment(.trailing)
-                    .keyboardType(.decimalPad)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .onSubmit(commitDraft)
-                    .accessibilityLabel(accessibilityLabel)
-                Stepper(accessibilityLabel, onIncrement: { step(by: step) }, onDecrement: { step(by: -step) })
-                    .labelsHidden()
-                    .accessibilityLabel(accessibilityLabel)
+        Group {
+            if stacksFields {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(title)
+                        .accessibilityHidden(true)
+                    numberField
+                    stepper
+                }
+            } else {
+                LabeledContent {
+                    HStack(spacing: 8) {
+                        numberField
+                        stepper
+                    }
+                } label: {
+                    Text(title)
+                }
             }
-        } label: {
-            Text(title)
         }
         .onAppear { draft = Self.format(value) }
         .onChange(of: value) { _, newValue in
@@ -44,6 +52,28 @@ struct NumericCommitField: View {
                 commitDraft()
             }
         }
+    }
+
+    private var numberField: some View {
+        TextField(title, text: $draft)
+            .focused($isFocused)
+            .multilineTextAlignment(stacksFields ? .leading : .trailing)
+            .keyboardType(.decimalPad)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .onSubmit(commitDraft)
+            .accessibilityLabel(accessibilityLabel)
+            .frame(minHeight: CGFloat(CanvasAccessibility.minimumHitTarget))
+    }
+
+    private var stepper: some View {
+        Stepper(accessibilityLabel, onIncrement: { step(by: step) }, onDecrement: { step(by: -step) })
+            .labelsHidden()
+            .accessibilityLabel(accessibilityLabel)
+            .frame(
+                minWidth: CGFloat(CanvasAccessibility.minimumHitTarget),
+                minHeight: CGFloat(CanvasAccessibility.minimumHitTarget)
+            )
     }
 
     private func step(by delta: Double) {

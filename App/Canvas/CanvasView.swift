@@ -1,3 +1,4 @@
+import AdaptiveLayout
 import CanvasModel
 import SwiftUI
 import UIKit
@@ -9,6 +10,9 @@ struct CanvasView: View {
     var layoutContext: CanvasLayoutContext
 
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Namespace private var canvasRotor
     @FocusState private var canvasFocused: Bool
     @GestureState private var moveGestureActive = false
     @State private var pointer: PointerSession?
@@ -39,7 +43,7 @@ struct CanvasView: View {
                         CanvasInlineTextField(
                             element: editing,
                             scale: scale,
-                            lineWidth: selectionLineWidth(
+                            indicator: selectionIndicator(
                                 for: editing,
                                 scale: scale,
                                 artboardOrigin: origin
@@ -63,7 +67,22 @@ struct CanvasView: View {
             .frame(width: geometry.size.width, height: geometry.size.height)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Canvas")
+        .accessibilityLabel(CanvasAccessibility.canvasLabel)
+        .accessibilityValue(CanvasAccessibility.canvasValue(elements: editor.document.orderedElements))
+        .accessibilityHint(CanvasAccessibility.canvasHint)
+        .modifier(OptionalAccessibilityAction(
+            name: CanvasAccessibility.clearSelectionAction,
+            perform: editor.primarySelection == nil || editor.isEditingTextInline
+                ? nil
+                : { editor.select(nil) }
+        ))
+        .accessibilityRotor("Elements") {
+            ForEach(rotorEntries) { entry in
+                AccessibilityRotorEntry(entry.label, id: entry.id, in: canvasRotor)
+            }
+        }
+        .modifier(TextElementsRotor(entries: rotorEntries.filter(\.isText), namespace: canvasRotor))
+        .focusSection()
         .focusable()
         .focused($canvasFocused)
         .focusedValue(\.canvasEditActions, CanvasEditActions(
@@ -126,25 +145,29 @@ struct CanvasView: View {
                     width: editor.document.canvasConfig.size.width * scale,
                     height: editor.document.canvasConfig.size.height * scale
                 )
-            ForEach(editor.document.orderedElements) { element in
+            ForEach(Array(editor.document.orderedElements.enumerated()), id: \.element.id) { index, element in
                 let role = selectionRole(of: element.id)
                 CanvasElementView(
                     element: element,
                     scale: scale,
                     imageData: imageData(for: element),
                     role: role,
-                    selectionLineWidth: selectionLineWidth(
+                    indicator: selectionIndicator(
                         for: element,
                         scale: scale,
                         artboardOrigin: origin
                     ),
-                    onSelect: { editor.select(element.id) },
-                    onDuplicate: { editor.duplicateElement(element.id) },
-                    onToggleSelection: { editor.toggleSelection(element.id) },
-                    onGroup: role == .primary && editor.canGroup ? { editor.groupSelection() } : nil,
-                    onUngroup: role == .primary && editor.canUngroup ? { editor.ungroupSelection() } : nil,
+                    accessibilityContext: accessibilityContext(for: element, role: role),
+                    rotorNamespace: canvasRotor,
+                    sortPriority: CanvasAccessibility.sortPriority(zIndex: index),
                     suppressesString: editor.inlineTextEditingID == element.id,
-                    onEditText: { editor.beginInlineTextEdit(element.id) }
+                    onSelect: {
+                        let root = CanvasStructure.selectionRoot(of: element.id, in: editor.document.elements)
+                        editor.select(root)
+                    },
+                    onAction: { action in
+                        performAccessibilityAction(action, on: element)
+                    }
                 )
                 .position(center(of: element, scale: scale))
             }
@@ -161,6 +184,7 @@ struct CanvasView: View {
                 .position(center(of: selected, scale: scale))
             }
         }
+        .dynamicTypeSize(.large)
     }
 
     private var artboardBackground: some View {
@@ -467,12 +491,11 @@ struct CanvasView: View {
     }
 
     /// The element's unrotated frame, in the same space as `layoutContext.reservedAreas`.
-    private func selectionLineWidth(
+    private func selectionIndicator(
         for element: CanvasElement,
         scale: Double,
         artboardOrigin: CGPoint
-    ) -> CGFloat {
-        let base: CGFloat = contrast == .increased ? 3 : 2
+    ) -> SelectionIndicatorStyle {
         let rect = CanvasRect(
             origin: CanvasPoint(
                 x: Double(artboardOrigin.x) + element.position.x * scale,
@@ -483,7 +506,76 @@ struct CanvasView: View {
         let crossesReservedArea = layoutContext.reservedAreas.contains { area in
             area.isActive && area.frame.intersects(rect)
         }
-        return crossesReservedArea ? base + 1 : base
+        return SelectionIndicatorStyle.resolve(
+            increasedContrast: contrast == .increased,
+            differentiateWithoutColor: differentiateWithoutColor,
+            crossesReservedArea: crossesReservedArea
+        )
+    }
+
+    private var inspectorIsSheet: Bool {
+        EditorArrangement.forHorizontalSizeClass(CanvasSizeClass(horizontalSizeClass)) == .sheet
+    }
+
+    private var rotorEntries: [CanvasRotorEntry] {
+        let visible = editor.document.orderedElements.filter { $0.id != editor.inlineTextEditingID }
+        return CanvasAccessibility.rotorEntries(in: visible)
+    }
+
+    private func accessibilityContext(
+        for element: CanvasElement,
+        role: ElementSelectionRole
+    ) -> CanvasAccessibilityContext {
+        CanvasAccessibilityContext(
+            role: accessibilityRole(role),
+            isText: element.type == .text,
+            isGroupedChild: element.parentID != nil,
+            inlineEditing: editor.isEditingTextInline,
+            canDuplicate: true,
+            canGroup: editor.canGroup,
+            canUngroup: editor.canUngroup,
+            inspectorIsSheet: inspectorIsSheet
+        )
+    }
+
+    private func accessibilityRole(_ role: ElementSelectionRole) -> CanvasAccessibilityRole {
+        switch role {
+        case .none: .none
+        case .member: .member
+        case .primary: .primary
+        }
+    }
+
+    /// Custom VoiceOver actions go through the same commands as the keyboard and the inspector.
+    private func performAccessibilityAction(_ action: CanvasAccessibilityAction, on element: CanvasElement) {
+        switch action {
+        case .nudgeLeft, .nudgeRight, .nudgeUp, .nudgeDown:
+            guard let delta = CanvasAccessibility.nudgeDelta(for: action) else { return }
+            editor.nudgeSelection(dx: delta.x, dy: delta.y)
+        case .increaseWidth, .decreaseWidth, .increaseHeight, .decreaseHeight:
+            guard let size = CanvasAccessibility.resized(element.size, by: action) else { return }
+            if size.width != element.size.width {
+                editor.setWidth(size.width, for: element.id)
+            }
+            if size.height != element.size.height {
+                editor.setHeight(size.height, for: element.id)
+            }
+        case .duplicate:
+            editor.duplicateElement(element.id)
+        case .delete:
+            editor.deleteSelection()
+        case .addToSelection, .removeFromSelection:
+            let root = CanvasStructure.selectionRoot(of: element.id, in: editor.document.elements)
+            editor.toggleSelection(root)
+        case .group:
+            editor.groupSelection()
+        case .ungroup:
+            editor.ungroupSelection()
+        case .editText:
+            editor.beginInlineTextEdit(element.id)
+        case .showInspector:
+            editor.inspectorPresented = true
+        }
     }
 }
 

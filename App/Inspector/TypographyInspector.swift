@@ -7,6 +7,7 @@ struct TypographyInspector: View {
     var element: CanvasElement
 
     @State private var isPresentingFontPicker = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         let text = element.text ?? TextAttributes(string: "")
@@ -18,9 +19,14 @@ struct TypographyInspector: View {
         Button {
             isPresentingFontPicker = true
         } label: {
-            LabeledContent("Font", value: text.fontName)
+            LabeledContent("Font") {
+                Text(text.fontName)
+                    .multilineTextAlignment(.trailing)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .accessibilityLabel("Font, \(text.fontName)")
+        .accessibilityHint("Opens the font list.")
         NumericCommitField(
             title: "Size",
             accessibilityLabel: "Font size",
@@ -32,12 +38,7 @@ struct TypographyInspector: View {
             }
         }
         .pickerStyle(.menu)
-        Picker("Alignment", selection: alignment) {
-            Text("Leading").tag(CanvasTextAlignment.leading)
-            Text("Center").tag(CanvasTextAlignment.center)
-            Text("Trailing").tag(CanvasTextAlignment.trailing)
-        }
-        .pickerStyle(.segmented)
+        alignmentPicker
         ColorPicker("Color", selection: color, supportsOpacity: false)
         .sheet(isPresented: $isPresentingFontPicker) {
             FontFamilyPicker { family in
@@ -46,6 +47,23 @@ struct TypographyInspector: View {
             } onCancel: {
                 isPresentingFontPicker = false
             }
+        }
+    }
+
+    @ViewBuilder
+    private var alignmentPicker: some View {
+        if AccessibilityChrome.resolve(isAccessibilitySize: dynamicTypeSize.isAccessibilitySize).usesMenuPicker {
+            alignmentChoices.pickerStyle(.menu)
+        } else {
+            alignmentChoices.pickerStyle(.segmented)
+        }
+    }
+
+    private var alignmentChoices: some View {
+        Picker("Alignment", selection: alignment) {
+            Text("Leading").tag(CanvasTextAlignment.leading)
+            Text("Center").tag(CanvasTextAlignment.center)
+            Text("Trailing").tag(CanvasTextAlignment.trailing)
         }
     }
 

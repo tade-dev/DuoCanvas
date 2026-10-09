@@ -33,6 +33,7 @@ struct ProjectListView: View {
                                 NavigationLink(value: project.id) {
                                     ProjectRow(project: project)
                                 }
+                                .accessibilityHint("Opens the project.")
                                 .accessibilityAction(named: "Rename") {
                                     beginRename(project)
                                 }
@@ -65,12 +66,14 @@ struct ProjectListView: View {
                     } label: {
                         Label("New Project", systemImage: "plus")
                     }
+                    .toolbarAccessibility()
                 }
             }
             .navigationDestination(for: UUID.self) { id in
                 ProjectEditorHost(projectID: id)
             }
         }
+        .honorReduceMotion()
         .onChange(of: path) { _, newPath in
             guard let id = newPath.last else { return }
             markOpened(id)

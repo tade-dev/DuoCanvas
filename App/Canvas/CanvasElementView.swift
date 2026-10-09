@@ -15,55 +15,65 @@ struct CanvasElementView: View {
     var scale: Double
     var imageData: Data?
     var role: ElementSelectionRole
-    var selectionLineWidth: CGFloat
-    var onSelect: () -> Void
-    var onDuplicate: (() -> Void)?
-    var onToggleSelection: (() -> Void)?
-    var onGroup: (() -> Void)?
-    var onUngroup: (() -> Void)?
+    var indicator: SelectionIndicatorStyle
+    var accessibilityContext: CanvasAccessibilityContext
+    var rotorNamespace: Namespace.ID
+    var sortPriority: Double
     /// Hides the rendered string while the canvas text field draws it.
     var suppressesString: Bool = false
-    var onEditText: (() -> Void)? = nil
+    var onSelect: () -> Void
+    var onAction: (CanvasAccessibilityAction) -> Void
 
     var body: some View {
+        let speech = CanvasAccessibility.speech(
+            for: element,
+            role: accessibilityContext.role,
+            isGroupedChild: accessibilityContext.isGroupedChild
+        )
         content
             .opacity(element.opacity)
             .frame(width: frameSize.width, height: frameSize.height)
             .overlay {
                 if role != .none, !suppressesString {
-                    Rectangle()
-                        .strokeBorder(
-                            Color.accentColor,
-                            style: StrokeStyle(
-                                lineWidth: selectionLineWidth,
-                                dash: role == .primary ? [] : [6, 4]
-                            )
-                        )
-                        .allowsHitTesting(false)
+                    selectionOutline
                 }
             }
             .rotationEffect(.degrees(element.rotation.degrees))
             .contentShape(Rectangle())
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(CanvasFormatting.accessibilityDescription(for: element))
-            .accessibilityValue(role == .primary ? "Primary" : "")
-            .accessibilityAddTraits(role == .none ? AccessibilityTraits() : .isSelected)
+            .accessibilityLabel(speech.label)
+            .accessibilityValue(speech.value)
+            .accessibilityHint(speech.hint)
+            .accessibilityAddTraits(accessibilityContext.role == .none ? AccessibilityTraits() : .isSelected)
             .accessibilityAction(.default, onSelect)
-            .modifier(NamedAccessibilityAction(name: "Duplicate", perform: onDuplicate))
-            .modifier(NamedAccessibilityAction(
-                name: role == .none ? "Add to Selection" : "Remove from Selection",
-                perform: onToggleSelection
+            .modifier(AccessibilityActionList(
+                actions: CanvasAccessibility.actions(for: accessibilityContext),
+                perform: onAction
             ))
-            .modifier(NamedAccessibilityAction(name: "Group", perform: onGroup))
-            .modifier(NamedAccessibilityAction(name: "Ungroup", perform: onUngroup))
-            .modifier(NamedAccessibilityAction(name: "Edit Text", perform: editTextAction))
+            .accessibilityRotorEntry(id: element.id, in: rotorNamespace)
+            .accessibilitySortPriority(sortPriority)
             .accessibilityHidden(suppressesString)
     }
 
-    /// VoiceOver edits text only on the primary element, and only when the field is closed.
-    private var editTextAction: (() -> Void)? {
-        guard element.type == .text, role == .primary, !suppressesString else { return nil }
-        return onEditText
+    private var selectionOutline: some View {
+        let width = CGFloat(indicator.lineWidth)
+        let color = indicator.usesHighContrastColor ? Color.primary : Color.accentColor
+        return ZStack {
+            Rectangle()
+                .strokeBorder(
+                    color,
+                    style: StrokeStyle(
+                        lineWidth: width,
+                        dash: role == .primary ? [] : [6, 4]
+                    )
+                )
+            if indicator.drawsShapeCue, min(frameSize.width, frameSize.height) > (width + 3) * 2 {
+                Rectangle()
+                    .inset(by: width + 3)
+                    .stroke(color, style: StrokeStyle(lineWidth: max(width - 1, 1), dash: [2, 2]))
+            }
+        }
+        .allowsHitTesting(false)
     }
 
     private var frameSize: CGSize {
@@ -160,7 +170,7 @@ struct CanvasElementView: View {
                 Rectangle()
                     .fill(element.fill?.color.swiftUIColor ?? Color.secondary.opacity(0.2))
                 Text("Image")
-                    .font(.caption)
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
             }
@@ -183,16 +193,3 @@ struct CanvasElementView: View {
     }
 }
 
-/// Adds a named VoiceOver action only when the editor has one to perform.
-private struct NamedAccessibilityAction: ViewModifier {
-    var name: String
-    var perform: (() -> Void)?
-
-    func body(content: Content) -> some View {
-        if let perform {
-            content.accessibilityAction(named: name, perform)
-        } else {
-            content
-        }
-    }
-}

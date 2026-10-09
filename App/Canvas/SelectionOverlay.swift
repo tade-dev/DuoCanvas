@@ -3,13 +3,14 @@ import SwiftUI
 import UIKit
 
 /// Resize and rotate handles, drawn only. The page gesture owns the touch.
-/// VoiceOver skips the overlay; the inspector's numeric fields resize and rotate the same element.
+/// VoiceOver skips the overlay. Move and resize actions, and the inspector fields, edit the same element.
 struct SelectionOverlay: View {
     var element: CanvasElement
     var scale: Double
     var placements: [SelectionHandlePlacement]
 
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
     var body: some View {
         let box = CanvasRect(origin: element.position, size: element.size).standardized
@@ -27,12 +28,20 @@ struct SelectionOverlay: View {
         .accessibilityHidden(true)
     }
 
+    private var indicator: SelectionIndicatorStyle {
+        SelectionIndicatorStyle.resolve(
+            increasedContrast: contrast == .increased,
+            differentiateWithoutColor: differentiateWithoutColor,
+            crossesReservedArea: false
+        )
+    }
+
     private var strokeColor: Color {
-        contrast == .increased ? Color.primary : Color.accentColor
+        indicator.usesHighContrastColor ? Color.primary : Color.accentColor
     }
 
     private var lineWidth: CGFloat {
-        contrast == .increased ? 2 : 1
+        CGFloat(indicator.handleLineWidth)
     }
 
     @ViewBuilder
@@ -55,7 +64,7 @@ struct SelectionOverlay: View {
                     .overlay {
                         Circle().strokeBorder(strokeColor, lineWidth: lineWidth)
                     }
-                    .frame(width: 10, height: 10)
+                    .frame(width: CGFloat(indicator.rotateGlyph), height: CGFloat(indicator.rotateGlyph))
             } else {
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                     .fill(Color(uiColor: .systemBackground))
@@ -63,7 +72,7 @@ struct SelectionOverlay: View {
                         RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                             .strokeBorder(strokeColor, lineWidth: lineWidth)
                     }
-                    .frame(width: 8, height: 8)
+                    .frame(width: CGFloat(indicator.resizeGlyph), height: CGFloat(indicator.resizeGlyph))
             }
         }
         .frame(width: CGFloat(SelectionHandleLayout.hitExtent), height: CGFloat(SelectionHandleLayout.hitExtent))

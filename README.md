@@ -6,7 +6,9 @@ The repository has two parts. `DuoCanvasCore` is the in-memory document, the com
 
 ## Status
 
-Milestone 6, editing. Duplicate, group, and ungroup are commands on the same undo stack. A selection can hold more than one element; the inspector edits the primary, and the others are marked with a dashed stroke and no handles. Copy and paste use a Transferable clipboard. Delete, the arrow keys, and ⌘D edit the selection. ⌘Z and ⇧⌘Z still go through the system undo manager. A second tap on a selected text element edits that string in place; the change is one Text undo step. Export PNG shares the committed page. A drag preview still does not write.
+Milestone 7, accessibility. VoiceOver can select an element and move, resize, duplicate, or delete it through the existing commands, without a drag. The Elements and Text rotors run front to back. Inspector rows and the alignment control reflow at accessibility text sizes. Canvas artwork keeps its own point sizes. Increase Contrast and Differentiate Without Color thicken the selection and add a second stroke so it is not colour alone. Handle hit boxes stay 44 points. Reduce Motion turns off app-owned animation. Arrow keys, Delete, ⌘D, and ⌘Z are unchanged.
+
+Milestone 6, editing, is unchanged. Duplicate, group, and ungroup are commands on the same undo stack. A selection can hold more than one element; the inspector edits the primary, and the others are marked with a dashed stroke and no handles. Copy and paste use a Transferable clipboard. Delete, the arrow keys, and ⌘D edit the selection. ⌘Z and ⇧⌘Z still go through the system undo manager. A second tap on a selected text element edits that string in place; the change is one Text undo step. Export PNG shares the committed page. A drag preview still does not write.
 
 Milestone 4, persistence, is unchanged. The app opens on a project list. You can create a project, rename it, open it, and delete it after a confirmation. The list is ordered by when the project was last opened. The editor saves when a command commits, including undo and redo. Image bytes are stored with the element and come back with the same id after a relaunch.
 
@@ -41,11 +43,11 @@ A new project is an empty 1200 by 800 point page. The page is fitted to the pane
 
 With nothing selected, the inspector shows the page size and background. Those values are not editable yet. The Add menu inserts the shapes the model already has. Image uses the system photo picker. The bytes stay in the session until the command commits, then they are stored with the element under the same `ImageRef` id.
 
-Arrange duplicates the selection, or groups and ungroups it. A tap on a grouped element selects the group. Shift-tap adds or removes an element. The inspector keeps editing the primary selection. Tap a selected text element again to edit it in its frame. Return, Done, or a tap outside commits that string as one undo step. Escape cancels. Arrow keys nudge by one point. Delete removes the selection. ⌘D duplicates, and ⌘C / ⌘V copy and paste, when the canvas is focused. Export PNG shares the page without selection marks.
+Arrange duplicates the selection, or groups and ungroups it. A tap on a grouped element selects the group. Shift-tap adds or removes an element. The inspector keeps editing the primary selection. Tap a selected text element again to edit it in its frame. Return, Done, or a tap outside commits that string as one undo step. Escape cancels. Arrow keys nudge by one point. Delete removes the selection. ⌘D duplicates, and ⌘C / ⌘V copy and paste, when the canvas is focused. Export PNG shares the page without selection marks. VoiceOver uses the same commands: nudge, resize by 8 points, duplicate, and delete. The page does not scale with Dynamic Type.
 
 ## Build and test
 
-The package tests need Swift 6. They were run with Swift 6.4 on Linux (102 tests). The app is not part of that build. This environment has no iOS 27.1 SDK, so the Duo target, the SwiftData container, Transferable, ImageRenderer, and the inline TextField were not compiled here.
+The package tests need Swift 6. They were run with Swift 6.4 on Linux (117 tests). The app is not part of that build. This environment has no iOS 27.1 SDK, so the Duo target, the SwiftData container, Transferable, ImageRenderer, VoiceOver, and the inline TextField were not compiled here.
 
 ```sh
 swift build
@@ -74,6 +76,12 @@ Check these on the iPhone Duo simulator in Xcode 27.1. This environment could no
 14. With the canvas focused, Delete removes the selection, and the arrow keys nudge it by one point. ⌘Z and ⇧⌘Z still undo and redo the same stack as the toolbar.
 15. Export PNG and share it. The image is the page, without selection handles. A drag that has not been released is not in the file. After a committed edit, stop the app and open the project again. The duplicate, the group, and the paste are still there.
 16. Tap a text element to select it, then tap it again. Type in the frame. Tap outside, press Return, or tap Done. Undo removes that string change in one step. Escape restores the previous string without a new step. Handles stay hidden during the edit. A short press that is not editing still only selects, and hold-to-move still waits about a quarter second. A dashed element does not enter edit. Clearing the string leaves the element in place.
+17. VoiceOver: from Home, open a project. Each element announces its type, text when it has some, size, and position. Select one. Nudge, resize, duplicate, and delete from the actions. Undo that step from the toolbar. On a compact width, Show Inspector opens the sheet and an edit there is one command. The Elements rotor moves front to back. No control is unlabeled.
+18. Dynamic Type at the largest accessibility size: the toolbar, inspector, project list, and inspector sheet grow and do not clip. Canvas artwork stays at its design size.
+19. Reduce Motion on: opening the inspector sheet does not animate.
+20. Increase Contrast on, then Differentiate Without Color on: the selection stays visible as an outline, with a second stroke when colour is not enough. Handles stay squares, and the rotate handle stays a circle.
+21. Resize and rotate handles still respond immediately, and their hit area is about 44 points. Hold-to-move still waits about a quarter second.
+22. With the canvas focused, the arrow keys, Delete, ⌘D, ⌘C, ⌘V, ⌘Z, and ⇧⌘Z still edit the same selection as before.
 
 ## Layer rules
 

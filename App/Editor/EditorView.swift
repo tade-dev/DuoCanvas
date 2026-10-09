@@ -28,6 +28,7 @@ struct EditorView: View {
                         ) {
                             Label("Export PNG", systemImage: "square.and.arrow.up")
                         }
+                        .toolbarAccessibility()
                     }
                     Button {
                         editor.undo()
@@ -36,6 +37,7 @@ struct EditorView: View {
                     }
                     .disabled(!editor.canUndo)
                     .accessibilityLabel(undoTitle)
+                    .toolbarAccessibility()
                     Button {
                         editor.redo()
                     } label: {
@@ -43,6 +45,7 @@ struct EditorView: View {
                     }
                     .disabled(!editor.canRedo)
                     .accessibilityLabel(redoTitle)
+                    .toolbarAccessibility()
                 }
                 if showsInspectorToggle {
                     ToolbarItem(placement: .primaryAction) {
@@ -52,6 +55,8 @@ struct EditorView: View {
                             Label("Inspector", systemImage: "sidebar.trailing")
                         }
                         .accessibilityAddTraits(editor.inspectorPresented ? .isSelected : [])
+                        .accessibilityHint(editor.inspectorPresented ? "Closes the inspector." : "Opens the inspector.")
+                        .toolbarAccessibility()
                     }
                 }
             }
@@ -98,6 +103,7 @@ struct EditorView: View {
         } label: {
             Label("Arrange", systemImage: "square.on.square")
         }
+        .toolbarAccessibility()
     }
 
     private var addMenu: some View {
@@ -133,6 +139,7 @@ struct EditorView: View {
         } label: {
             Label("Add", systemImage: "plus")
         }
+        .toolbarAccessibility()
     }
 
     private func importPhoto(_ item: PhotosPickerItem) async {

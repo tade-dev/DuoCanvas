@@ -1,3 +1,4 @@
+import CanvasModel
 import SwiftUI
 
 /// A labeled string that commits when editing ends.
@@ -9,10 +10,11 @@ struct TextCommitField: View {
 
     @State private var draft = ""
     @FocusState private var isFocused: Bool
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         TextField(title, text: $draft, axis: .vertical)
-            .lineLimit(1...4)
+            .lineLimit(lineLimit)
             .focused($isFocused)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
@@ -30,6 +32,11 @@ struct TextCommitField: View {
                     commitDraft()
                 }
             }
+    }
+
+    private var lineLimit: ClosedRange<Int> {
+        let chrome = AccessibilityChrome.resolve(isAccessibilitySize: dynamicTypeSize.isAccessibilitySize)
+        return chrome.stacksFields ? 1...8 : 1...4
     }
 
     private func commitDraft() {
