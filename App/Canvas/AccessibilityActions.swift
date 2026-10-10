@@ -41,7 +41,7 @@ struct TextElementsRotor: ViewModifier {
         } else {
             content.accessibilityRotor("Text") {
                 ForEach(entries) { entry in
-                    AccessibilityRotorEntry(entry.label, id: entry.id, in: namespace)
+                    AccessibilityRotorEntry(entry.label, entry.id, in: namespace)
                 }
             }
         }

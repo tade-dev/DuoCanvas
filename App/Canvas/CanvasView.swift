@@ -78,7 +78,7 @@ struct CanvasView: View {
         ))
         .accessibilityRotor("Elements") {
             ForEach(rotorEntries) { entry in
-                AccessibilityRotorEntry(entry.label, id: entry.id, in: canvasRotor)
+                AccessibilityRotorEntry(entry.label, entry.id, in: canvasRotor)
             }
         }
         .modifier(TextElementsRotor(entries: rotorEntries.filter(\.isText), namespace: canvasRotor))

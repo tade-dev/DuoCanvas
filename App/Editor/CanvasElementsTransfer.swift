@@ -61,7 +61,7 @@ struct CanvasClipboardModifier: ViewModifier {
             onPaste(clipboard)
         }
         if let clipboard {
-            destination.copyable(CanvasElementsTransfer(clipboard: clipboard))
+            destination.copyable([CanvasElementsTransfer(clipboard: clipboard)])
         } else {
             destination
         }
