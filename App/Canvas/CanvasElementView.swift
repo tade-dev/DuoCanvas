@@ -17,19 +17,58 @@ struct CanvasElementView: View {
     var role: ElementSelectionRole
     var indicator: SelectionIndicatorStyle
     var accessibilityContext: CanvasAccessibilityContext
-    var rotorNamespace: Namespace.ID
+    /// Nil for a static render. The live canvas always supplies the rotor namespace.
+    var rotorNamespace: Namespace.ID?
     var sortPriority: Double
     /// Hides the rendered string while the canvas text field draws it.
     var suppressesString: Bool = false
-    var onSelect: () -> Void
-    var onAction: (CanvasAccessibilityAction) -> Void
+    /// ImageRenderer output is not an accessibility element.
+    var isAccessibilityElement: Bool = true
+    var onSelect: () -> Void = {}
+    var onAction: (CanvasAccessibilityAction) -> Void = { _ in }
+
+    /// Selection-free drawing for PNG export. No actions, and hidden from VoiceOver.
+    static func rendered(
+        element: CanvasElement,
+        scale: Double,
+        imageData: Data?
+    ) -> CanvasElementView {
+        CanvasElementView(
+            element: element,
+            scale: scale,
+            imageData: imageData,
+            role: .none,
+            indicator: SelectionIndicatorStyle.resolve(
+                increasedContrast: false,
+                differentiateWithoutColor: false,
+                crossesReservedArea: false
+            ),
+            accessibilityContext: CanvasAccessibilityContext(
+                role: .none,
+                isText: false,
+                isGroupedChild: false,
+                inlineEditing: false,
+                canDuplicate: false,
+                canGroup: false,
+                canUngroup: false,
+                inspectorIsSheet: false
+            ),
+            rotorNamespace: nil,
+            sortPriority: 0,
+            suppressesString: false,
+            isAccessibilityElement: false
+        )
+    }
 
     var body: some View {
-        let speech = CanvasAccessibility.speech(
-            for: element,
-            role: accessibilityContext.role,
-            isGroupedChild: accessibilityContext.isGroupedChild
-        )
+        if isAccessibilityElement {
+            accessibleDrawing
+        } else {
+            drawing.accessibilityHidden(true)
+        }
+    }
+
+    private var drawing: some View {
         content
             .opacity(element.opacity)
             .frame(width: frameSize.width, height: frameSize.height)
@@ -40,6 +79,15 @@ struct CanvasElementView: View {
             }
             .rotationEffect(.degrees(element.rotation.degrees))
             .contentShape(Rectangle())
+    }
+
+    private var accessibleDrawing: some View {
+        let speech = CanvasAccessibility.speech(
+            for: element,
+            role: accessibilityContext.role,
+            isGroupedChild: accessibilityContext.isGroupedChild
+        )
+        return drawing
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(speech.label)
             .accessibilityValue(speech.value)
@@ -50,7 +98,7 @@ struct CanvasElementView: View {
                 actions: CanvasAccessibility.actions(for: accessibilityContext),
                 perform: onAction
             ))
-            .accessibilityRotorEntry(id: element.id, in: rotorNamespace)
+            .modifier(RotorEntryMarker(id: element.id, namespace: rotorNamespace))
             .accessibilitySortPriority(sortPriority)
             .accessibilityHidden(suppressesString)
     }
@@ -190,6 +238,20 @@ struct CanvasElementView: View {
     /// An element with no paint still has a faint fill so it can be selected.
     private var fillColor: Color {
         element.fill?.color.swiftUIColor ?? Color.primary.opacity(0.08)
+    }
+}
+
+/// Attaches a rotor entry only when the live canvas has supplied a namespace.
+private struct RotorEntryMarker: ViewModifier {
+    var id: CanvasElement.ID
+    var namespace: Namespace.ID?
+
+    func body(content: Content) -> some View {
+        if let namespace {
+            content.accessibilityRotorEntry(id: id, in: namespace)
+        } else {
+            content
+        }
     }
 }
 
