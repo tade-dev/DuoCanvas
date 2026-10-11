@@ -1,3 +1,4 @@
+import CanvasModel
 import PersistenceMapping
 import SwiftData
 import SwiftUI
@@ -12,26 +13,31 @@ struct ProjectListView: View {
     @State private var nameText = ""
     @State private var pendingDeleteID: UUID?
     @State private var libraryError: String?
+    @Namespace private var projectZoom
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         NavigationStack(path: $path) {
             Group {
                 if orderedProjects.isEmpty {
-                    ContentUnavailableView {
-                        Label("No Projects", systemImage: "rectangle.on.rectangle")
-                    } description: {
-                        Text("Create a project to start a canvas.")
-                    } actions: {
-                        Button("New Project") {
-                            beginCreate()
-                        }
+                ContentUnavailableView {
+                    Label(CanvasEmptyCopy.homeTitle, systemImage: "rectangle.on.rectangle")
+                } description: {
+                    Text(CanvasEmptyCopy.homeMessage)
+                } actions: {
+                    Button(CanvasEmptyCopy.homeAction) {
+                        beginCreate()
                     }
+                    .buttonStyle(.borderedProminent)
+                    .frame(minHeight: CGFloat(CanvasAccessibility.minimumHitTarget))
+                }
                 } else {
                     List {
                         Section("Recents") {
                             ForEach(orderedProjects) { project in
                                 NavigationLink(value: project.id) {
                                     ProjectRow(project: project)
+                                        .matchedTransitionSource(id: project.id, in: projectZoom)
                                 }
                                 .accessibilityHint("Opens the project.")
                                 .accessibilityAction(named: "Rename") {
@@ -71,6 +77,7 @@ struct ProjectListView: View {
             }
             .navigationDestination(for: UUID.self) { id in
                 ProjectEditorHost(projectID: id)
+                    .projectZoomTransition(id: id, in: projectZoom, reduceMotion: reduceMotion)
             }
         }
         .honorReduceMotion()
@@ -178,14 +185,14 @@ struct ProjectListView: View {
                 nameText = ""
                 path.append(id)
             } catch {
-                libraryError = error.localizedDescription
+                reportLibrary(error)
             }
         case .rename(let id):
             guard let project = projects.first(where: { $0.id == id }) else { return }
             do {
                 try library.rename(project, to: nameText)
             } catch {
-                libraryError = error.localizedDescription
+                reportLibrary(error)
             }
         }
     }
@@ -195,7 +202,7 @@ struct ProjectListView: View {
         do {
             try library.markOpened(project)
         } catch {
-            libraryError = error.localizedDescription
+            reportLibrary(error)
         }
     }
 
@@ -208,8 +215,13 @@ struct ProjectListView: View {
         do {
             try library.delete(project)
         } catch {
-            libraryError = error.localizedDescription
+            reportLibrary(error)
         }
+    }
+
+    private func reportLibrary(_ error: Error) {
+        libraryError = CanvasFailureCopy.libraryUpdate
+        CanvasInstrumentation.log.error("Project list update failed: \(error.localizedDescription, privacy: .public)")
     }
 }
 
@@ -271,5 +283,16 @@ private enum NamePrompt: Identifiable {
 
 #Preview("Projects") {
     ProjectListView()
-        .modelContainer(DuoCanvasModelContainer.make(inMemory: true))
+        .modelContainer(try! DuoCanvasModelContainer.make(inMemory: true))
+}
+
+private extension View {
+    @ViewBuilder
+    func projectZoomTransition(id: UUID, in namespace: Namespace.ID, reduceMotion: Bool) -> some View {
+        if MotionPolicy.usesZoomTransition(reduceMotion: reduceMotion) {
+            navigationTransition(.zoom(sourceID: id, in: namespace))
+        } else {
+            self
+        }
+    }
 }

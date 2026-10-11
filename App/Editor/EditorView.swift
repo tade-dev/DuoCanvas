@@ -2,7 +2,6 @@ import AdaptiveLayout
 import CanvasModel
 import PhotosUI
 import SwiftUI
-import UIKit
 
 struct EditorView: View {
     @Bindable var editor: EditorModel
@@ -11,7 +10,13 @@ struct EditorView: View {
     var onCommittedRevision: () -> Void = {}
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var photoItem: PhotosPickerItem?
-    @State private var exportPNG: Data?
+    @State private var exportPage = CanvasPageExport(
+        canvasSize: .zero,
+        background: .white,
+        elements: [],
+        images: [:]
+    )
+    @State private var notice: EditorNotice?
 
     var body: some View {
         AdaptiveEditorLayout(editor: editor)
@@ -21,15 +26,7 @@ struct EditorView: View {
                 ToolbarItemGroup(placement: .automatic) {
                     addMenu
                     arrangeMenu
-                    if let exportPNG {
-                        ShareLink(
-                            item: CanvasPNG(data: exportPNG),
-                            preview: SharePreview(navigationTitle)
-                        ) {
-                            Label("Export PNG", systemImage: "square.and.arrow.up")
-                        }
-                        .toolbarAccessibility()
-                    }
+                    exportControl
                     Button {
                         editor.undo()
                     } label: {
@@ -69,14 +66,29 @@ struct EditorView: View {
             }
             .onChange(of: editor.document.revision) { _, _ in
                 onCommittedRevision()
+                captureExportPage()
             }
-            .task(id: editor.document.revision) {
-                exportPNG = CanvasPNGRenderer.pngData(
-                    canvasSize: editor.document.canvasConfig.size,
-                    background: editor.document.canvasConfig.background,
-                    elements: editor.document.orderedElements,
-                    images: editor.imageStore.dataByID
-                )
+            .onAppear {
+                captureExportPage()
+                CanvasExportReporting.report = { problem in
+                    notice = EditorNotice(title: "Couldn't Export PNG", message: problem.message)
+                }
+            }
+            .onDisappear {
+                CanvasExportReporting.report = nil
+            }
+            .onChange(of: editor.imageProblem) { _, problem in
+                guard let problem else { return }
+                notice = EditorNotice(title: "Couldn't Add Image", message: problem.message)
+                editor.imageProblem = nil
+            }
+            .alert(
+                notice?.title ?? "Couldn't Complete That",
+                isPresented: noticeIsPresented
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(notice?.message ?? "")
             }
     }
 
@@ -142,17 +154,67 @@ struct EditorView: View {
         .toolbarAccessibility()
     }
 
+    private var exportControl: some View {
+        let label = Label("Export PNG", systemImage: "square.and.arrow.up")
+        return Group {
+            if let problem = CanvasExportCheck.problem(
+                width: exportPage.canvasSize.width,
+                height: exportPage.canvasSize.height
+            ) {
+                Button {
+                    notice = EditorNotice(title: "Couldn't Export PNG", message: problem.message)
+                } label: {
+                    label
+                }
+            } else {
+                ShareLink(item: exportPage, preview: SharePreview(navigationTitle)) {
+                    label
+                }
+            }
+        }
+        .toolbarAccessibility()
+    }
+
+    private var noticeIsPresented: Binding<Bool> {
+        Binding(
+            get: { notice != nil },
+            set: { isPresented in
+                if !isPresented { notice = nil }
+            }
+        )
+    }
+
+    /// Copies the document after a commit. A live drag does not change `revision`, so the
+    /// shared PNG stays on the last committed page.
+    private func captureExportPage() {
+        exportPage = CanvasPageExport(
+            canvasSize: editor.document.canvasConfig.size,
+            background: editor.document.canvasConfig.background,
+            elements: editor.document.orderedElements,
+            images: editor.imageStore.dataByID
+        )
+    }
+
     private func importPhoto(_ item: PhotosPickerItem) async {
         do {
-            guard let imported = try await item.loadTransferable(type: ImportedCanvasImage.self) else { return }
-            let pixelSize = UIImage(data: imported.data)?.size
-            editor.insertImage(
-                data: imported.data,
-                pixelWidth: Double(pixelSize?.width ?? 0),
-                pixelHeight: Double(pixelSize?.height ?? 0)
-            )
+            guard let imported = try await item.loadTransferable(type: ImportedCanvasImage.self) else {
+                notice = EditorNotice(title: "Couldn't Add Image", message: CanvasImageProblem.empty.message)
+                return
+            }
+            switch CanvasImagePreparation.prepare(imported.data) {
+            case .success(let prepared):
+                editor.insertImage(
+                    data: prepared.data,
+                    pixelWidth: prepared.pixelWidth,
+                    pixelHeight: prepared.pixelHeight,
+                    displayImage: prepared.image
+                )
+            case .failure(let problem):
+                notice = EditorNotice(title: "Couldn't Add Image", message: problem.message)
+            }
         } catch {
-            return
+            notice = EditorNotice(title: "Couldn't Add Image", message: CanvasImageProblem.undecodable.message)
+            CanvasInstrumentation.log.error("Image import failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -171,6 +233,12 @@ struct EditorView: View {
         guard editor.canRedo, !editor.redoActionName.isEmpty else { return "Redo" }
         return "Redo \(editor.redoActionName)"
     }
+}
+
+private struct EditorNotice: Identifiable {
+    var id = UUID()
+    var title: String
+    var message: String
 }
 
 #Preview("Sample editor") {

@@ -63,6 +63,19 @@ struct CanvasView: View {
                 }
                 .coordinateSpace(name: ArtboardCoordinate.name)
                 .frame(width: fitted.width, height: fitted.height)
+                if editor.document.order.isEmpty {
+                    ContentUnavailableView {
+                        Label(CanvasEmptyCopy.canvasTitle, systemImage: "rectangle.dashed")
+                    } description: {
+                        Text(CanvasEmptyCopy.canvasMessage)
+                    } actions: {
+                        Button(CanvasEmptyCopy.canvasAction) {
+                            editor.addRectangle()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .frame(minHeight: CGFloat(CanvasAccessibility.minimumHitTarget))
+                    }
+                }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
         }
@@ -149,7 +162,7 @@ struct CanvasView: View {
                 CanvasElementView(
                     element: element,
                     scale: scale,
-                    imageData: imageData(for: element),
+                    displayImage: displayImage(for: element),
                     role: role,
                     indicator: selectionIndicator(
                         for: element,
@@ -168,6 +181,7 @@ struct CanvasView: View {
                         performAccessibilityAction(action, on: element)
                     }
                 )
+                .equatable()
                 .position(center(of: element, scale: scale))
             }
             if let selected = editor.selectedElement, editor.inlineTextEditingID == nil {
@@ -392,9 +406,8 @@ struct CanvasView: View {
         return PointerContact(onBody: false, elementID: nil, handleOutsideBody: nil)
     }
 
-    private func imageData(for element: CanvasElement) -> Data? {
-        guard let id = element.image?.id else { return nil }
-        return editor.imageStore.data(for: id)
+    private func displayImage(for element: CanvasElement) -> UIImage? {
+        editor.displayImages.image(for: element.image?.id)
     }
 
     private func handlePlacements(

@@ -2,6 +2,7 @@ import CanvasCommands
 import CanvasModel
 import Foundation
 import Observation
+import UIKit
 
 /// The in-memory editor for one project: the document, its command stack, and the selection.
 @MainActor
@@ -19,6 +20,9 @@ final class EditorModel {
     private var inlineTextOriginal = ""
     /// Compact width presents the inspector as a sheet. Regular width ignores this flag.
     var inspectorPresented = false
+    /// Set when pasted image bytes cannot be drawn. The editor view presents it and clears it.
+    var imageProblem: CanvasImageProblem?
+    @ObservationIgnored let displayImages = CanvasDisplayImageCache()
 
     private var moveEdit: CoalescedEdit?
     private var moveOrigins: [CanvasElement.ID: CanvasPoint] = [:]
@@ -159,7 +163,9 @@ final class EditorModel {
         cancelInlineTextEdit()
         cancelInFlightEdit()
         continuousFlushTask?.cancel()
+        let interval = CanvasInstrumentation.begin(CanvasInstrumentation.commandCommit)
         session.commandManager.undo()
+        CanvasInstrumentation.end(CanvasInstrumentation.commandCommit, interval)
         pruneSelection()
     }
 
@@ -167,7 +173,9 @@ final class EditorModel {
         cancelInlineTextEdit()
         cancelInFlightEdit()
         continuousFlushTask?.cancel()
+        let interval = CanvasInstrumentation.begin(CanvasInstrumentation.commandCommit)
         session.commandManager.redo()
+        CanvasInstrumentation.end(CanvasInstrumentation.commandCommit, interval)
         pruneSelection()
     }
 
@@ -275,6 +283,9 @@ final class EditorModel {
         prepareForDiscreteCommand()
         for image in clipboard.images where imageStore.data(for: image.id) == nil {
             imageStore.store(image.data, for: image.id)
+            if displayImages.prepare(id: image.id, data: image.data) == nil {
+                imageProblem = image.data.isEmpty ? .empty : .undecodable
+            }
         }
         if clipboard.elements == lastPasteElements {
             pasteRepeat += 1
@@ -577,9 +588,11 @@ final class EditorModel {
 
     /// Stores `data` for this session and inserts an image element.
     /// The id is the `ImageRef`. A project save writes those bytes with the element.
-    func insertImage(data: Data, pixelWidth: Double, pixelHeight: Double) {
+    /// `displayImage` was decoded once by the importer.
+    func insertImage(data: Data, pixelWidth: Double, pixelHeight: Double, displayImage: UIImage) {
         let id = UUID()
         session.imageStore.store(data, for: id)
+        displayImages.store(displayImage, for: id)
         let element = CanvasElement.image(
             ImageRef(id: id),
             position: nextOrigin(),
@@ -588,8 +601,17 @@ final class EditorModel {
         insertNew(element)
     }
 
+    /// Decodes images already stored for this session. Call before the canvas is shown.
+    func warmDisplayImages() {
+        for (id, data) in imageStore.dataByID {
+            displayImages.prepare(id: id, data: data)
+        }
+    }
+
     /// Live drag. `translation` is in the artboard's view space; `scale` converts it to canvas points.
     func previewMove(of id: CanvasElement.ID, translationX: Double, translationY: Double, scale: Double) {
+        let interval = CanvasInstrumentation.begin(CanvasInstrumentation.dragPreview)
+        defer { CanvasInstrumentation.end(CanvasInstrumentation.dragPreview, interval) }
         guard resizeEdit == nil, rotateEdit == nil, inlineTextEditingID == nil else { return }
         guard scale > 0, document.element(id) != nil else { return }
         if moveEdit == nil {
@@ -635,6 +657,8 @@ final class EditorModel {
         artboardTranslationY: Double,
         scale: Double
     ) {
+        let interval = CanvasInstrumentation.begin(CanvasInstrumentation.dragPreview)
+        defer { CanvasInstrumentation.end(CanvasInstrumentation.dragPreview, interval) }
         guard inlineTextEditingID == nil else { return }
         guard scale > 0, document.element(id) != nil else { return }
         if resizeEdit == nil {
@@ -678,6 +702,8 @@ final class EditorModel {
     }
 
     func previewRotate(of id: CanvasElement.ID, canvasPoint: CanvasPoint) {
+        let interval = CanvasInstrumentation.begin(CanvasInstrumentation.dragPreview)
+        defer { CanvasInstrumentation.end(CanvasInstrumentation.dragPreview, interval) }
         guard inlineTextEditingID == nil, document.element(id) != nil else { return }
         if rotateEdit == nil {
             guard let current = document.element(id) else { return }
@@ -710,6 +736,8 @@ final class EditorModel {
 
     func endMove() {
         guard moveEdit != nil else { return }
+        let interval = CanvasInstrumentation.begin(CanvasInstrumentation.commandCommit)
+        defer { CanvasInstrumentation.end(CanvasInstrumentation.commandCommit, interval) }
         canvasGestureEndedNormally = true
         moveEdit?.end()
         clearMove()
@@ -717,6 +745,8 @@ final class EditorModel {
 
     func endResize() {
         guard resizeEdit != nil else { return }
+        let interval = CanvasInstrumentation.begin(CanvasInstrumentation.commandCommit)
+        defer { CanvasInstrumentation.end(CanvasInstrumentation.commandCommit, interval) }
         canvasGestureEndedNormally = true
         resizeEdit?.end()
         clearResize()
@@ -724,6 +754,8 @@ final class EditorModel {
 
     func endRotate() {
         guard rotateEdit != nil else { return }
+        let interval = CanvasInstrumentation.begin(CanvasInstrumentation.commandCommit)
+        defer { CanvasInstrumentation.end(CanvasInstrumentation.commandCommit, interval) }
         canvasGestureEndedNormally = true
         rotateEdit?.end()
         clearRotate()
@@ -834,6 +866,8 @@ final class EditorModel {
 
     private func endStyleEdit() {
         guard styleEdit != nil else { return }
+        let interval = CanvasInstrumentation.begin(CanvasInstrumentation.commandCommit)
+        defer { CanvasInstrumentation.end(CanvasInstrumentation.commandCommit, interval) }
         styleEdit?.end()
         clearStyle()
     }
@@ -894,7 +928,9 @@ final class EditorModel {
 
     private func insertNew(_ element: CanvasElement) {
         prepareForDiscreteCommand()
+        let interval = CanvasInstrumentation.begin(CanvasInstrumentation.commandCommit)
         session.commandManager.insert(element)
+        CanvasInstrumentation.end(CanvasInstrumentation.commandCommit, interval)
         primarySelection = element.id
         selectedIDs = [element.id]
     }

@@ -10,10 +10,10 @@ enum ElementSelectionRole: Equatable {
     case primary
 }
 
-struct CanvasElementView: View {
+struct CanvasElementView: View, @MainActor Equatable {
     var element: CanvasElement
     var scale: Double
-    var imageData: Data?
+    var displayImage: UIImage?
     var role: ElementSelectionRole
     var indicator: SelectionIndicatorStyle
     var accessibilityContext: CanvasAccessibilityContext
@@ -27,16 +27,31 @@ struct CanvasElementView: View {
     var onSelect: () -> Void = {}
     var onAction: (CanvasAccessibilityAction) -> Void = { _ in }
 
+    /// Closures are left out of equality. They call the same editor, and a changed
+    /// element or selection role rebuilds them. This keeps a drag from redrawing
+    /// every other element on each frame.
+    static func == (lhs: CanvasElementView, rhs: CanvasElementView) -> Bool {
+        lhs.element == rhs.element
+            && lhs.scale == rhs.scale
+            && lhs.displayImage === rhs.displayImage
+            && lhs.role == rhs.role
+            && lhs.indicator == rhs.indicator
+            && lhs.accessibilityContext == rhs.accessibilityContext
+            && lhs.sortPriority == rhs.sortPriority
+            && lhs.suppressesString == rhs.suppressesString
+            && lhs.isAccessibilityElement == rhs.isAccessibilityElement
+    }
+
     /// Selection-free drawing for PNG export. No actions, and hidden from VoiceOver.
     static func rendered(
         element: CanvasElement,
         scale: Double,
-        imageData: Data?
+        displayImage: UIImage?
     ) -> CanvasElementView {
         CanvasElementView(
             element: element,
             scale: scale,
-            imageData: imageData,
+            displayImage: displayImage,
             role: .none,
             indicator: SelectionIndicatorStyle.resolve(
                 increasedContrast: false,
@@ -85,7 +100,8 @@ struct CanvasElementView: View {
         let speech = CanvasAccessibility.speech(
             for: element,
             role: accessibilityContext.role,
-            isGroupedChild: accessibilityContext.isGroupedChild
+            isGroupedChild: accessibilityContext.isGroupedChild,
+            imageUnavailable: element.type == .image && displayImage == nil
         )
         return drawing
             .accessibilityElement(children: .ignore)
@@ -210,14 +226,14 @@ struct CanvasElementView: View {
 
     private var imageBody: some View {
         ZStack {
-            if let imageData, let uiImage = UIImage(data: imageData) {
-                Image(uiImage: uiImage)
+            if let displayImage {
+                Image(uiImage: displayImage)
                     .resizable()
                     .scaledToFill()
             } else {
                 Rectangle()
                     .fill(element.fill?.color.swiftUIColor ?? Color.secondary.opacity(0.2))
-                Text("Image")
+                Text(CanvasEmptyCopy.imageUnavailable)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
