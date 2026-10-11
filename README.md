@@ -6,7 +6,11 @@ The repository has two parts. `DuoCanvasCore` is the in-memory document, the com
 
 ## Status
 
-Milestone 7, accessibility. VoiceOver can select an element and move, resize, duplicate, or delete it through the existing commands, without a drag. The Elements and Text rotors run front to back. Inspector rows and the alignment control reflow at accessibility text sizes. Canvas artwork keeps its own point sizes. Increase Contrast and Differentiate Without Color thicken the selection and add a second stroke so it is not colour alone. Handle hit boxes stay 44 points. Reduce Motion turns off app-owned animation. Arrow keys, Delete, ⌘D, and ⌘Z are unchanged.
+Milestone 8, polish. Opening a project from Recents uses the system zoom transition, and Reduce Motion keeps that change still. An empty project list, an empty canvas, and an inspector with nothing selected each offer one primary action. The page size and background stay in the inspector when nothing is selected. Save, open, image import, a missing image, and PNG export failures are shown; PNG export renders when you share, not on every edit. A drag reuses decoded images. Points of Interest intervals are `DragPreview`, `CommandCommit`, `ProjectSave`, and `PNGExport` in subsystem `dev.tade.DuoCanvas`.
+
+On a side-by-side split, the canvas and the inspector are separate cards on a black gutter, and a light grey capsule in that gutter resizes the inspector. ArrangementView has no system divider, and `.inspector` / `NavigationSplitView` would drop the Duo split, so the grabber writes `splitArrangementLayoutSize`'s ideal width. The width stays between 280 and 480 points, and the canvas keeps at least 240 when the window allows it. Dragging past that limit stops the panes and snaps the capsule back. The hit strip is 44 points wide. The choice is stored on the device (`inspectorColumnWidth`) and is not an undo step. The grabber is hidden when the split is stacked, and when it would sit on an active fold. The stacked layout keeps the cards and the gutter. `pointerStyle` is not used: the project’s API notes mark it as macOS and visionOS only. Pointer hover uses `hoverEffect`.
+
+Milestone 7, accessibility, is unchanged. VoiceOver can select an element and move, resize, duplicate, or delete it through the existing commands, without a drag. The Elements and Text rotors run front to back. Inspector rows and the alignment control reflow at accessibility text sizes. Canvas artwork keeps its own point sizes. Increase Contrast and Differentiate Without Color thicken the selection and add a second stroke so it is not colour alone. Handle hit boxes stay 44 points. Reduce Motion turns off app-owned animation. Arrow keys, Delete, ⌘D, and ⌘Z are unchanged.
 
 Milestone 6, editing, is unchanged. Duplicate, group, and ungroup are commands on the same undo stack. A selection can hold more than one element; the inspector edits the primary, and the others are marked with a dashed stroke and no handles. Copy and paste use a Transferable clipboard. Delete, the arrow keys, and ⌘D edit the selection. ⌘Z and ⇧⌘Z still go through the system undo manager. A second tap on a selected text element edits that string in place; the change is one Text undo step. Export PNG shares the committed page. A drag preview still does not write.
 
@@ -37,7 +41,7 @@ One open project is one `EditingSession`. That session owns the `CanvasDocument`
 
 Open `DuoCanvas.xcodeproj` in Xcode 27.1. The run destination is the iPhone Duo simulator. The project does not set a development team or a signing identity.
 
-The window is one `NavigationStack`. Home is the root. The arrangement sits inside the editor, not the other way around. Regular width uses `ArrangementView` with `.arrangementViewStyle(.split)`: canvas primary, inspector secondary. The system puts them side by side when the container is wider than it is tall, and stacks the canvas above the inspector when it is taller. Compact width shows the canvas and presents the inspector as a sheet from the Inspector toolbar item. The sheet uses medium and large detents, and the canvas stays interactive up through the medium detent.
+The window is one `NavigationStack`. Home is the root. Opening a row zooms into the canvas when Reduce Motion is off. The arrangement sits inside the editor, not the other way around. Regular width uses `ArrangementView` with `.arrangementViewStyle(.split)`: canvas primary, inspector secondary. The system puts them side by side when the container is wider than it is tall, and stacks the canvas above the inspector when it is taller. In the side-by-side layout, the panes are rounded cards on a black gutter. Drag the capsule in the gutter to set the inspector width. Stacked, the cards and gutter stay and the capsule does not. Compact width shows the canvas and presents the inspector as a sheet from the Inspector toolbar item. The sheet uses medium and large detents, and the canvas stays interactive up through the medium detent.
 
 A new project is an empty 1200 by 800 point page. The page is fitted to the pane. There is no pan or zoom yet. Hold a press on an element for about a quarter second, then drag, to move it as one undo step. A short press selects it and does not resize. Square resize handles and the round rotate handle respond as soon as they are dragged; they do not wait for that hold. A drag that starts on the element body does not resize it. A handle that would sit in an active reserved area slides along its edge.
 
@@ -47,7 +51,7 @@ Arrange duplicates the selection, or groups and ungroups it. A tap on a grouped 
 
 ## Build and test
 
-The package tests need Swift 6. They were run with Swift 6.4 on Linux (117 tests). The app is not part of that build. This environment has no iOS 27.1 SDK, so the Duo target, the SwiftData container, Transferable, ImageRenderer, VoiceOver, and the inline TextField were not compiled here.
+The package tests need Swift 6. They were run with Swift 6.4 on Linux (126 tests). The app is not part of that build. This environment has no iOS 27.1 SDK, so the Duo target, the SwiftData container, Transferable, ImageRenderer, VoiceOver, and the inline TextField were not compiled here.
 
 ```sh
 swift build
@@ -82,6 +86,10 @@ Check these on the iPhone Duo simulator in Xcode 27.1. This environment could no
 20. Increase Contrast on, then Differentiate Without Color on: the selection stays visible as an outline, with a second stroke when colour is not enough. Handles stay squares, and the rotate handle stays a circle.
 21. Resize and rotate handles still respond immediately, and their hit area is about 44 points. Hold-to-move still waits about a quarter second.
 22. With the canvas focused, the arrow keys, Delete, ⌘D, ⌘C, ⌘V, ⌘Z, and ⇧⌘Z still edit the same selection as before.
+23. Reduce Motion off: open a project from Recents and go back. The row zooms into the canvas and back. Reduce Motion on: the same open and close do not zoom.
+24. Delete every project. Home shows “No Projects” and New Project. Open a new project. The empty canvas offers Add Rectangle. With nothing selected, the inspector offers Add Rectangle and still shows the page size and background.
+25. Export PNG from the toolbar and share it. The image is the page, without selection handles. A drag that has not been released is not in the file. If you can force a failed export, an alert appears and nothing is shared.
+26. Side-by-side layout: the canvas and inspector are rounded cards on a black gutter, with a light grey capsule in the gap and no hairline. Drag the capsule. It does not collapse either pane, and dragging past the limit snaps back. Leave and relaunch. The width is still the one you set. VoiceOver: adjust “Inspector width”. Increase Contrast makes the capsule brighter and wider. Stacked layout keeps the cards and gutter and hides the capsule. A pose where the divider would sit on the fold hides it too.
 
 ## Layer rules
 

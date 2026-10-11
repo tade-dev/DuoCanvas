@@ -114,4 +114,15 @@ public enum CanvasRecordMappingError: Error, Equatable, Sendable {
     case unknownFontWeight(String)
     case unknownTextAlignment(String)
     case corruptBlob
+
+    public var openingMessage: String {
+        switch self {
+        case .unknownElementType:
+            "This project contains an element the app can't read."
+        case .corruptBlob:
+            "This project's canvas data is damaged and could not be read."
+        case .unknownFontWeight, .unknownTextAlignment:
+            "This project's text could not be read."
+        }
+    }
 }

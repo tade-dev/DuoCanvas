@@ -37,7 +37,16 @@ final class ProjectStore {
 
     /// Writes the document if it differs from the last successful save.
     func saveCommitted(document: CanvasDocument, images: CanvasImageStore) {
-        guard document.id == project.id, let lastState else { return }
+        guard document.id == project.id else {
+            lastErrorMessage = CanvasFailureCopy.projectMismatch
+            CanvasInstrumentation.log.error("Project save skipped because the document id did not match")
+            return
+        }
+        guard let lastState else {
+            lastErrorMessage = CanvasFailureCopy.projectNotReady
+            CanvasInstrumentation.log.error("Project save skipped because the project was not loaded")
+            return
+        }
         let state = CanvasRecordMapping.state(from: document) { id in
             images.data(for: id)
         }
@@ -55,13 +64,16 @@ final class ProjectStore {
         }
         apply(changes)
         project.modifiedAt = Date()
+        let interval = CanvasInstrumentation.begin(CanvasInstrumentation.projectSave)
+        defer { CanvasInstrumentation.end(CanvasInstrumentation.projectSave, interval) }
         do {
             try context.save()
             self.lastState = state
             lastErrorMessage = nil
         } catch {
             context.rollback()
-            lastErrorMessage = error.localizedDescription
+            lastErrorMessage = CanvasFailureCopy.projectSave
+            CanvasInstrumentation.log.error("Project save failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 

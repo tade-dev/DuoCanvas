@@ -1,4 +1,5 @@
 import CanvasModel
+import PersistenceMapping
 import SwiftData
 import SwiftUI
 
@@ -13,7 +14,9 @@ struct ProjectEditorHost: View {
     @State private var editor: EditorModel?
     @State private var store: ProjectStore?
     @State private var failedToOpen = false
+    @State private var openMessage = CanvasFailureCopy.projectOpenGeneric
     @State private var saveError: String?
+    @State private var imageWarning: String?
 
     var body: some View {
         Group {
@@ -26,11 +29,11 @@ struct ProjectEditorHost: View {
                     }
                 )
             } else if failedToOpen {
-                ContentUnavailableView(
-                    "Couldn't Open Project",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text("This project is missing or its canvas could not be read.")
-                )
+                ContentUnavailableView {
+                    Label("Couldn't Open Project", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(openMessage)
+                }
             } else {
                 ProgressView("Opening")
             }
@@ -54,7 +57,15 @@ struct ProjectEditorHost: View {
         ) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(saveError ?? "The last edit is still on the canvas, but it was not written to the project.")
+            Text(saveError ?? CanvasFailureCopy.projectSave)
+        }
+        .alert(
+            "Image Unavailable",
+            isPresented: imageWarningIsPresented
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(imageWarning ?? "")
         }
     }
 
@@ -74,6 +85,15 @@ struct ProjectEditorHost: View {
         )
     }
 
+    private var imageWarningIsPresented: Binding<Bool> {
+        Binding(
+            get: { imageWarning != nil },
+            set: { isPresented in
+                if !isPresented { imageWarning = nil }
+            }
+        )
+    }
+
     private func openIfNeeded() {
         guard editor == nil, !failedToOpen else { return }
         do {
@@ -84,11 +104,21 @@ struct ProjectEditorHost: View {
                 imageStore.store(data, for: id)
             }
             let editor = EditorModel(document: loaded.document, imageStore: imageStore)
+            editor.warmDisplayImages()
             editor.adoptSystemUndoManager(systemUndoManager)
+            let missing = CanvasImageAudit.missingIDs(in: loaded.document.orderedElements) { id in
+                loaded.imageDataByID[id] != nil
+            }
+            let notDrawn = missing.count + editor.displayImages.undecodableIDs.count
+            if notDrawn > 0 {
+                imageWarning = CanvasImageAudit.notDrawnMessage(count: notDrawn)
+            }
             self.store = store
             self.editor = editor
         } catch {
+            openMessage = ProjectOpenMessage.text(for: error)
             failedToOpen = true
+            CanvasInstrumentation.log.error("Project open failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -109,4 +139,16 @@ struct ProjectEditorHost: View {
 private struct UndoAdoptionID: Equatable {
     var manager: ObjectIdentifier?
     var editor: ObjectIdentifier?
+}
+
+enum ProjectOpenMessage {
+    static func text(for error: Error) -> String {
+        if let mapping = error as? CanvasRecordMappingError {
+            return mapping.openingMessage
+        }
+        if error is ProjectStoreError {
+            return CanvasFailureCopy.projectMissing
+        }
+        return CanvasFailureCopy.projectOpenGeneric
+    }
 }

@@ -8,7 +8,7 @@ import SwiftData
 /// `isUndoEnabled: false` does. Canvas commands keep the only undo stack.
 @MainActor
 enum DuoCanvasModelContainer {
-    static func make(inMemory: Bool) -> ModelContainer {
+    static func make(inMemory: Bool) throws -> ModelContainer {
         let schema = Schema(versionedSchema: SchemaV1.self)
         let configuration = ModelConfiguration(
             isStoredInMemoryOnly: inMemory,
@@ -24,7 +24,7 @@ enum DuoCanvasModelContainer {
             container.mainContext.autosaveEnabled = true
             return container
         } catch {
-            fatalError("Could not open the DuoCanvas store: \(error)")
+            throw error
         }
     }
 }

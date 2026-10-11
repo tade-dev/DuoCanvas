@@ -6,74 +6,26 @@ struct InspectorView: View {
     var editor: EditorModel
 
     var body: some View {
-        Form {
+        Group {
             if let element = editor.selectedElement {
-                let fields = InspectorFieldSet.forType(element.type)
-                Group {
-                    Section {
-                        NumericCommitField(
-                            title: "X",
-                            accessibilityLabel: "X position",
-                            value: element.position.x
-                        ) { editor.setX($0, for: element.id) }
-                        NumericCommitField(
-                            title: "Y",
-                            accessibilityLabel: "Y position",
-                            value: element.position.y
-                        ) { editor.setY($0, for: element.id) }
-                        NumericCommitField(
-                            title: "W",
-                            accessibilityLabel: "Width",
-                            value: element.size.width
-                        ) { editor.setWidth($0, for: element.id) }
-                        NumericCommitField(
-                            title: "H",
-                            accessibilityLabel: "Height",
-                            value: element.size.height
-                        ) { editor.setHeight($0, for: element.id) }
-                        NumericCommitField(
-                            title: "Rotation",
-                            accessibilityLabel: "Rotation",
-                            value: element.rotation.degrees
-                        ) { editor.setRotation($0, for: element.id) }
-                    } header: {
-                        Text(element.type.displayName)
-                    } footer: {
-                        if editor.additionalSelectionCount == 1 {
-                            Text("Rotation is in degrees, clockwise. This is the primary selection. 1 more element is selected.")
-                        } else if editor.additionalSelectionCount > 1 {
-                            Text("Rotation is in degrees, clockwise. This is the primary selection. \(editor.additionalSelectionCount) more elements are selected.")
-                        } else {
-                            Text("Rotation is in degrees, clockwise.")
-                        }
-                    }
-                    Section("Appearance") {
-                        AppearanceInspector(editor: editor, element: element, fields: fields)
-                    }
-                    if fields.typography {
-                        Section("Typography") {
-                            TypographyInspector(editor: editor, element: element)
-                        }
-                    }
-                }
-                .id(element.id)
+                elementForm(element)
             } else {
-                Section {
-                    LabeledContent("Width", value: CanvasFormatting.number(editor.document.canvasConfig.size.width))
-                    LabeledContent("Height", value: CanvasFormatting.number(editor.document.canvasConfig.size.height))
-                    LabeledContent("Background") {
-                        HStack(spacing: 8) {
-                            Circle()
-                                .fill(editor.document.canvasConfig.background.swiftUIColor)
-                                .frame(width: 12, height: 12)
-                                .accessibilityHidden(true)
-                            Text(CanvasFormatting.backgroundDescription(editor.document.canvasConfig.background))
+                VStack(spacing: 0) {
+                    ContentUnavailableView {
+                        Label(CanvasEmptyCopy.inspectorTitle, systemImage: "square.dashed")
+                    } description: {
+                        Text(CanvasEmptyCopy.inspectorMessage)
+                    } actions: {
+                        Button(CanvasEmptyCopy.inspectorAction) {
+                            editor.addRectangle()
                         }
+                        .buttonStyle(.borderedProminent)
+                        .frame(minHeight: CGFloat(CanvasAccessibility.minimumHitTarget))
                     }
-                } header: {
-                    Text("Document")
-                } footer: {
-                    Text("Select an element to edit it.")
+                    Form {
+                        documentSection
+                    }
+                    .scrollDismissesKeyboard(.interactively)
                 }
             }
         }
@@ -83,6 +35,79 @@ struct InspectorView: View {
                 Spacer()
                 Button("Done") { dismissKeyboard() }
             }
+        }
+    }
+
+    private func elementForm(_ element: CanvasElement) -> some View {
+        let fields = InspectorFieldSet.forType(element.type)
+        return Form {
+            Group {
+                Section {
+                    NumericCommitField(
+                        title: "X",
+                        accessibilityLabel: "X position",
+                        value: element.position.x
+                    ) { editor.setX($0, for: element.id) }
+                    NumericCommitField(
+                        title: "Y",
+                        accessibilityLabel: "Y position",
+                        value: element.position.y
+                    ) { editor.setY($0, for: element.id) }
+                    NumericCommitField(
+                        title: "W",
+                        accessibilityLabel: "Width",
+                        value: element.size.width
+                    ) { editor.setWidth($0, for: element.id) }
+                    NumericCommitField(
+                        title: "H",
+                        accessibilityLabel: "Height",
+                        value: element.size.height
+                    ) { editor.setHeight($0, for: element.id) }
+                    NumericCommitField(
+                        title: "Rotation",
+                        accessibilityLabel: "Rotation",
+                        value: element.rotation.degrees
+                    ) { editor.setRotation($0, for: element.id) }
+                } header: {
+                    Text(element.type.displayName)
+                } footer: {
+                    if editor.additionalSelectionCount == 1 {
+                        Text("Rotation is in degrees, clockwise. This is the primary selection. 1 more element is selected.")
+                    } else if editor.additionalSelectionCount > 1 {
+                        Text("Rotation is in degrees, clockwise. This is the primary selection. \(editor.additionalSelectionCount) more elements are selected.")
+                    } else {
+                        Text("Rotation is in degrees, clockwise.")
+                    }
+                }
+                Section("Appearance") {
+                    AppearanceInspector(editor: editor, element: element, fields: fields)
+                }
+                if fields.typography {
+                    Section("Typography") {
+                        TypographyInspector(editor: editor, element: element)
+                    }
+                }
+            }
+            .id(element.id)
+        }
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    private var documentSection: some View {
+        Section {
+            LabeledContent("Width", value: CanvasFormatting.number(editor.document.canvasConfig.size.width))
+            LabeledContent("Height", value: CanvasFormatting.number(editor.document.canvasConfig.size.height))
+            LabeledContent("Background") {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(editor.document.canvasConfig.background.swiftUIColor)
+                        .frame(width: 12, height: 12)
+                        .accessibilityHidden(true)
+                    Text(CanvasFormatting.backgroundDescription(editor.document.canvasConfig.background))
+                }
+            }
+        } header: {
+            Text("Document")
         }
     }
 

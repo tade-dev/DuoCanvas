@@ -3,7 +3,7 @@ import SwiftData
 
 /// First persisted schema. Later versions become stages on `DuoCanvasMigrationPlan`.
 enum SchemaV1: VersionedSchema {
-    static var versionIdentifier = Schema.Version(1, 0, 0)
+    static let versionIdentifier = Schema.Version(1, 0, 0)
 
     static var models: [any PersistentModel.Type] {
         [ProjectRecord.self, ElementRecord.self]

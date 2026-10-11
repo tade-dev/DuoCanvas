@@ -178,6 +178,12 @@ public enum MotionPolicy {
     public static func disablesAnimations(reduceMotion: Bool) -> Bool {
         reduceMotion
     }
+
+    /// Home opens the canvas with the system zoom transition only when motion is allowed.
+    /// Reduce Motion keeps the ordinary navigation change, which the app then shows without animation.
+    public static func usesZoomTransition(reduceMotion: Bool) -> Bool {
+        !reduceMotion
+    }
 }
 
 public enum CanvasAccessibility {
@@ -197,16 +203,25 @@ public enum CanvasAccessibility {
     public static func speech(
         for element: CanvasElement,
         role: CanvasAccessibilityRole,
-        isGroupedChild: Bool
+        isGroupedChild: Bool,
+        imageUnavailable: Bool = false
     ) -> CanvasAccessibilitySpeech {
         CanvasAccessibilitySpeech(
-            label: spokenLabel(for: element, isGroupedChild: isGroupedChild),
+            label: spokenLabel(
+                for: element,
+                isGroupedChild: isGroupedChild,
+                imageUnavailable: imageUnavailable
+            ),
             value: spokenValue(role: role),
             hint: spokenHint(role: role, isGroupedChild: isGroupedChild)
         )
     }
 
-    public static func spokenLabel(for element: CanvasElement, isGroupedChild: Bool) -> String {
+    public static func spokenLabel(
+        for element: CanvasElement,
+        isGroupedChild: Bool,
+        imageUnavailable: Bool = false
+    ) -> String {
         var parts = [element.type.displayName]
         if element.type == .text, let string = element.text?.string, !string.isEmpty {
             parts.append(string)
@@ -223,6 +238,9 @@ public enum CanvasAccessibility {
         )
         if element.rotation.degrees != 0 {
             parts.append("rotated \(CanvasFormatting.number(element.rotation.degrees)) degrees")
+        }
+        if imageUnavailable {
+            parts.append("image unavailable")
         }
         if isGroupedChild {
             parts.append("inside a group")
