@@ -96,7 +96,6 @@ struct CanvasView: View {
                 editor.paste(received)
             }
         ))
-        .onDeleteCommand(perform: editor.isEditingTextInline ? nil : { editor.deleteSelection() })
         .onKeyPress(phases: [.down, .up]) { press in
             shiftHeld = press.modifiers.contains(.shift)
             if editor.isEditingTextInline {
@@ -117,7 +116,7 @@ struct CanvasView: View {
                 editor.nudgeSelection(dx: -1, dy: 0)
             case .rightArrow:
                 editor.nudgeSelection(dx: 1, dy: 0)
-            case .deleteForward:
+            case .delete, .deleteForward:
                 editor.deleteSelection()
             default:
                 return .ignored
