@@ -78,7 +78,6 @@ struct InspectorView: View {
             }
         }
         .scrollDismissesKeyboard(.interactively)
-        .focusSection()
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()

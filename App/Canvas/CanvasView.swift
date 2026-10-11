@@ -82,7 +82,7 @@ struct CanvasView: View {
             }
         }
         .modifier(TextElementsRotor(entries: rotorEntries.filter(\.isText), namespace: canvasRotor))
-        .focusSection()
+        // focusSection() is macOS and tvOS only. The canvas takes hardware-key focus itself.
         .focusable()
         .focused($canvasFocused)
         .focusedValue(\.canvasEditActions, CanvasEditActions(
