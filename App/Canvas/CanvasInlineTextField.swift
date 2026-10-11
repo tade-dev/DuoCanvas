@@ -8,7 +8,7 @@ import SwiftUI
 struct CanvasInlineTextField: View {
     var element: CanvasElement
     var scale: Double
-    var lineWidth: CGFloat
+    var indicator: SelectionIndicatorStyle
     @Binding var draft: String
     var onFinish: (Bool) -> Void
 
@@ -37,10 +37,21 @@ struct CanvasInlineTextField: View {
             )
             .opacity(element.opacity)
             .overlay {
-                Rectangle()
-                    .strokeBorder(Color.accentColor, lineWidth: lineWidth)
-                    .allowsHitTesting(false)
+                let width = CGFloat(indicator.lineWidth)
+                let color = indicator.usesHighContrastColor ? Color.primary : Color.accentColor
+                ZStack {
+                    Rectangle()
+                        .strokeBorder(color, lineWidth: width)
+                    if indicator.drawsShapeCue {
+                        Rectangle()
+                            .inset(by: width + 3)
+                            .stroke(color, style: StrokeStyle(lineWidth: max(width - 1, 1), dash: [2, 2]))
+                    }
+                }
+                .allowsHitTesting(false)
             }
+            .accessibilityLabel(CanvasAccessibility.inlineTextLabel)
+            .accessibilityHint(CanvasAccessibility.inlineTextHint)
             .rotationEffect(.degrees(element.rotation.degrees))
             .onSubmit { finish(commit: true) }
             .onKeyPress(.escape) {

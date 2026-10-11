@@ -48,18 +48,16 @@ struct CanvasExportView: View {
             Rectangle()
                 .fill(background.swiftUIColor)
             ForEach(elements) { element in
-                CanvasElementView(
+                CanvasElementView.rendered(
                     element: element,
                     scale: 1,
-                    imageData: element.image.flatMap { images[$0.id] },
-                    role: .none,
-                    selectionLineWidth: 0,
-                    onSelect: {}
+                    imageData: element.image.flatMap { images[$0.id] }
                 )
                 .position(center(of: element))
             }
         }
         .frame(width: canvasSize.width, height: canvasSize.height)
+        .accessibilityHidden(true)
     }
 
     private func center(of element: CanvasElement) -> CGPoint {

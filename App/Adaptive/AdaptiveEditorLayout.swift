@@ -27,6 +27,7 @@ struct AdaptiveEditorLayout: View {
                                         Button("Done") {
                                             editor.inspectorPresented = false
                                         }
+                                        .toolbarAccessibility()
                                     }
                                 }
                         }
@@ -37,6 +38,7 @@ struct AdaptiveEditorLayout: View {
             }
         }
         .cancelInFlightEditsWhenHingeChanges(editor)
+        .honorReduceMotion()
         .onChange(of: horizontalSizeClass) { _, newValue in
             editor.cancelInFlightEdit()
             if CanvasSizeClass(newValue) == .regular {
